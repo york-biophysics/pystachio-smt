@@ -3,7 +3,7 @@ Post processing trajectories and intensities
 
 Routines for getting isingle and diffusion coefficient from lists of intensities
 
-v0.1 Jack W Shepherd, University of York
+v0.2 Jack W Shepherd, University of York
 """
 
 import matplotlib.pyplot as plt
@@ -20,7 +20,7 @@ def postprocess(params, simulated=False):
     display_figures = params.display_figures
     if not params.ALEX:
         trajs = []
-        if False: #simulated:
+        if simulated:
             trajs = trajectories.read_trajectories(params.name + "_simulated_trajectories.tsv")
         else:
             trajs = trajectories.read_trajectories(params.name + "_trajectories.tsv")
@@ -54,9 +54,9 @@ def postprocess(params, simulated=False):
         plot_traj_intensities(params, trajs, params.chung_kennedy)
         get_stoichiometries(trajs, calculated_isingle, params)
         if params.copy_number==True: get_copy_number(params, calculated_isingle)
+        overtrack(params, trajs)
 
     elif params.ALEX:
-
         Rtrajs = trajectories.read_trajectories(params.name + "_Rchannel_trajectories.tsv")
         Ltrajs = trajectories.read_trajectories(params.name + "_Lchannel_trajectories.tsv")
         Rspots = trajectories.to_spots(Rtrajs)
@@ -95,8 +95,8 @@ def postprocess(params, simulated=False):
         if params.copy_number==True: 
             get_copy_number(params, Lcalculated_isingle, channel="L")
             get_copy_number(params, Rcalculated_isingle, channel="R")
-        if params.colocalize==True:
-            if params.colocalize: colocalize(params, Ltrajs, Rtrajs)
+
+        if params.colocalize: colocalize(params, Ltrajs, Rtrajs)
 
     else: sys.exit("ERROR: look do you want ALEX or not?\nSet params.ALEX=True or False")
 
@@ -239,6 +239,10 @@ def linker(params, spots1, spots2): #spots1 and spots2 are arrays going xpos, yp
     for i in range(len(spots2[:])): 
         s2_pos.append(spots2[i][0])
         s2_width.append(spots2[i][1])
+    # s1_pos = np.array(s1_pos)
+    # s2_pos = np.array(s2_pos)
+    # print(s1_pos.shape)
+    # print(s2_pos)
     dm = distance_matrix(s1_pos,s2_pos)
     dm[dm>params.colocalize_distance]=-1
     overlap = np.zeros(dm.shape)
@@ -364,6 +368,7 @@ def get_isingle(params, intensities, channel=None):
 
 def get_diffusion_coef(traj_list, params, channel=None):
     diffusion_coefs = []
+    ids = []
     loc_precisions = []
     for traj in traj_list:
         trajectory_length = traj.length
@@ -397,6 +402,7 @@ def get_diffusion_coef(traj_list, params, channel=None):
             popt, pcov = curve_fit(straightline, tau, MSD, p0=[1, 0], sigma=weights)
             # if popt[0] > 0:
             diffusion_coefs.append(popt[0] / 4.0)
+            ids.append(traj.id)
             if popt[1] > 0:
                 loc_precisions.append(np.sqrt(popt[1]) / 4.0)
         except:
@@ -421,31 +427,33 @@ def get_diffusion_coef(traj_list, params, channel=None):
         plt.show()
     plt.close()
     f = open(params.name + "_diff_coeff_data.tsv", "w")
+    f.write("trajectory\tdiffusion coefficient\n")
     for i in range(len(diffusion_coefs)):
-        f.write(str(float(diffusion_coefs[i]))+"\n")
+        f.write(str(ids[i]) + "\t" + str(float(diffusion_coefs[i]))+"\n")
     f.close()
     f = open(params.name + "_diff_coeff_loc_precision_data.tsv", "w")
     for i in range(len(loc_precisions)):
-        f.write(str(float(loc_precisions[i]))+"\n")
+        f.write(str(ids[i]) + "\t" + str(float(loc_precisions[i]))+"\n")
     f.close()
     return diffusion_coefs, loc_precisions
 
 
 def plot_traj_intensities(params, trajs, channel=None, chung_kennedy=True):
-    if chung_kennedy: ck_data = []
+    if params.chung_kennedy: ck_data = []
     for traj in trajs:
         t = np.array(traj.intensity)
         plt.plot(t/10**3)
-        #ck_data.append(chung_kennedy_filter(t,params.chung_kennedy_window,1)[0][:-1])
-    ofile = params.name+"_chung_kennedy_data.csv"
-    f = open(ofile, 'w')
-    ck_data = np.array(ck_data)
-    for ck in range(len(ck_data)): 
-        f.write(str(ck_data[ck][0]))
-        for j in range(len(ck_data[ck])): 
-            f.write(","+str(ck_data[ck][j]))
-        f.write("\n")
-    f.close()
+        if params.chung_kennedy: ck_data.append(chung_kennedy_filter(t,params.chung_kennedy_window,1)[0][:-1])
+    if params.chung_kennedy:
+        ofile = params.name+"_chung_kennedy_data.csv"
+        f = open(ofile, 'w')
+        ck_data = np.array(ck_data)
+        for ck in range(len(ck_data)): 
+            f.write(str(ck_data[ck][0]))
+            for j in range(len(ck_data[ck])): 
+                f.write(","+str(ck_data[ck][j]))
+            f.write("\n")
+        f.close()
     plt.xlabel("Frame number")
     plt.ylabel("Intensity (camera counts per pixel x$10^3$)")
     if channel=="L":
@@ -462,7 +470,7 @@ def plot_traj_intensities(params, trajs, channel=None, chung_kennedy=True):
     if params.display_figures:
         plt.show()
     plt.close()
-    if chung_kennedy:
+    if params.chung_kennedy:
         for ck in ck_data:
             plt.plot(ck)
         plt.xlabel("Frame number")
@@ -485,6 +493,7 @@ def plot_traj_intensities(params, trajs, channel=None, chung_kennedy=True):
 def get_stoichiometries(trajs, isingle, params, channel=None):
     # Let's do the easy part first - the ones where they do not start at the start
     stoics = []
+    ids = []
     startframe = 100000
     for traj in trajs:
         if traj.start_frame<startframe and traj.length>=params.num_stoic_frames: startframe=traj.start_frame
@@ -492,6 +501,8 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
     for traj in trajs:
         if traj.length <params.num_stoic_frames:
             continue
+        if traj.start_frame-startframe>4:
+            continue #stoics.append(traj.intensity[0] / isingle)
         if params.stoic_method == "Initial":
             # Initial intensity
             traj.stoichiometry = traj.intensity[0] / isingle
@@ -502,29 +513,35 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
                 np.mean(traj.intensity[: params.num_stoic_frames]) / isingle
                 )
         elif params.stoic_method == "Linear":
-            if traj.start_frame-startframe>4:
-                continue #stoics.append(traj.intensity[0] / isingle)
+            xdata = (
+                np.arange(0, params.num_stoic_frames , dtype="float")
+                # * params.frameTime
+            )
+            ydata = traj.intensity[0: params.num_stoic_frames]
+            popt, pcov = curve_fit(straightline, xdata, ydata)
+            intercept = popt[1]
+            if intercept > 0 and popt[0]<0 and startframe!=100000:
+                traj.stoichiometry = (intercept + abs((traj.start_frame-startframe)*popt[0])) / isingle
+                # traj.stoichiometry = traj.stoichiometry[0]
             else:
-                xdata = (
-                    np.arange(0, params.num_stoic_frames , dtype="float")
-                    # * params.frameTime
-                )
-                ydata = traj.intensity[0: params.num_stoic_frames]
-                popt, pcov = curve_fit(straightline, xdata, ydata)
-                intercept = popt[1]
-                print(popt)
-                if intercept > 0:  #and popt[0]<0 and startframe!=100000:
-                    traj.stoichiometry = (intercept + abs((traj.start_frame-startframe)*popt[0])) / isingle
-                    traj.stoichiometry = traj.stoichiometry[0]
-                else:
-                    continue 
-                    # traj.stoichiometry = traj.intensity[0] / isingle
+                continue 
+        else:
+            continue
         stoics.append(traj.stoichiometry)
-    #print(stoics)
+        ids.append(traj.id)
     stoics = np.array(stoics)
+    ids = np.array(ids)
+    if stoics.size<=1:
+        print("Not enough stoic data to do a KDE/further plotting")
+        return
     max_stoic = int(np.round(np.amax(stoics)))
 
     bandwidth = 0.7
+    ids = ids[np.isfinite(stoics)]
+    stoics = stoics[np.isfinite(stoics)]
+    if stoics.shape[0]<3:
+        print("WARNING: Empty stoichiometry array for KDE plot. Ignoring stoichiometries")
+        return 0
     kde = gaussian_kde(stoics, bw_method=bandwidth)
     x = np.linspace(0, max_stoic, max_stoic)
     pdf = kde.evaluate(x)
@@ -574,7 +591,48 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
         plt.show()
     plt.close()
     f = open(oseed + "_data.tsv", "w")
+    f.write("trajectory\stoichiometry\n")
     for i in range(len(stoics)):
         f.write(str(float(stoics[i]))+"\n")
     f.close()
     return 0
+
+def overtrack(params, trajs):
+    image_data = images.ImageData()
+    image_data.read(params)
+    outfile = params.seed_name+"_overtracked_trajectory_intensities.tsv"
+    f = open(outfile, 'w')
+    f.write("Trajectory ID\tFrame\tIntensity\n")
+    for traj in trajs:
+        ints = traj.intensity
+        final_position = traj.path[-1]
+        x = round(final_position[0])
+        y = round(final_position[1])
+        final_frame = traj.end_frame
+        for frame in range(final_frame+1,final_frame+11):
+            image = image_data.pixel_data[frame,:,:]
+            # Create a tmp array with the centre of the spot in the centre
+            tmp = image[
+                y - params.subarray_halfwidth : y + params.subarray_halfwidth+1, 
+                x - params.subarray_halfwidth : x + params.subarray_halfwidth + 1
+            ] 
+            spotmask = np.zeros(tmp.shape)
+            cv2.circle(spotmask, 
+                    (params.subarray_halfwidth, params.subarray_halfwidth),
+                    params.inner_mask_radius,
+                    1,
+                    -1
+            )
+            bgintensity = np.mean(tmp[spotmask == 0])
+            tmp = tmp - bgintensity
+            intensity = np.sum(tmp[spotmask == 1])
+            ints.append(intensity/10**5)
+        # for i in range(len(ints)):
+        #     outstr = str(traj.id) + "\t" + str(traj.start_frame+i) + "\t" + str(ints[i]) + "\n"
+        #     f.write(outstr)
+        plt.plot(ints, lw=1, label="Trajectory "+str(traj.id))
+    plt.title("Overtracked trajectories")
+    plt.xlabel("Trajectory frame number")
+    plt.ylabel("Intensity (a.u.)")
+    # plt.legend()
+    plt.savefig(params.seed_name+"overtracked_trajectory_intensities_plot.png", dpi=300)
