@@ -3,7 +3,7 @@ Post processing trajectories and intensities
 
 Routines for getting isingle and diffusion coefficient from lists of intensities
 
-v0.2 Jack W Shepherd, University of York
+v0.1 Jack W Shepherd, University of York
 """
 
 import matplotlib.pyplot as plt
@@ -13,6 +13,7 @@ from scipy.stats import gaussian_kde
 from scipy.spatial import distance_matrix
 import os
 import trajectories, images
+import cv2 as cv2
 
 display_figures = False
 
@@ -522,7 +523,7 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
             intercept = popt[1]
             if intercept > 0 and popt[0]<0 and startframe!=100000:
                 traj.stoichiometry = (intercept + abs((traj.start_frame-startframe)*popt[0])) / isingle
-                # traj.stoichiometry = traj.stoichiometry[0]
+                traj.stoichiometry = traj.stoichiometry[0]
             else:
                 continue 
         else:
@@ -537,6 +538,8 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
     max_stoic = int(np.round(np.amax(stoics)))
 
     bandwidth = 0.7
+    print(ids)
+    print(stoics)
     ids = ids[np.isfinite(stoics)]
     stoics = stoics[np.isfinite(stoics)]
     if stoics.shape[0]<3:
@@ -599,8 +602,8 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
 
 def overtrack(params, trajs):
     image_data = images.ImageData()
-    image_data.read(params)
-    outfile = params.seed_name+"_overtracked_trajectory_intensities.tsv"
+    image_data.read(params.name+".tif", params)
+    outfile = params.name+"_overtracked_trajectory_intensities.tsv"
     f = open(outfile, 'w')
     f.write("Trajectory ID\tFrame\tIntensity\n")
     for traj in trajs:
@@ -635,4 +638,4 @@ def overtrack(params, trajs):
     plt.xlabel("Trajectory frame number")
     plt.ylabel("Intensity (a.u.)")
     # plt.legend()
-    plt.savefig(params.seed_name+"overtracked_trajectory_intensities_plot.png", dpi=300)
+    plt.savefig(params.name+"overtracked_trajectory_intensities_plot.png", dpi=300)
