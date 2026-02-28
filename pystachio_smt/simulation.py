@@ -49,7 +49,7 @@ def simulate(params):
     # initialise the spot co-ords
     real_spots[0].positions[:, 0] = random.rand(params.num_spots) * params.frame_size[0]
     real_spots[0].positions[:, 1] = random.rand(params.num_spots) * params.frame_size[1]
-    real_spots[0].spot_intensity[:] = params.I_single
+    real_spots[0].spot_intensity[:] = params.I_single * (n_mols+n_mols_fractional_intensity)
     real_spots[0].frame = 1
 
     # Simulate diffusion
@@ -73,8 +73,11 @@ def simulate(params):
                     if random.rand() < params.p_bleach_per_frame:
                         #How far into next frame does this one last?
                         frac = random.rand()
-                        n_mols_fractional_intensity += frac
+                        n_mols_fractional_intensity[i] += frac
                         n_mols[i] -= 1
+            if n_mols[i] == 0 and params.photoblink:
+                if random.rand() < params.p_photoblink:
+                    n_mols[i] = 1
 
     # Simulate the image stack and save
     image = ImageData()

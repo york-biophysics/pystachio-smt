@@ -253,6 +253,7 @@ class Spots:
 
             # Get the centre estimate, make sure the spot_region fits in the frame
             p_estimate = self.positions[i_spot, :]
+
             for d in (0, 1):
                 if round(p_estimate[d]) < r:
                     p_estimate[d] = r
@@ -338,12 +339,12 @@ class Spots:
                 if not np.isnan(p_estimate_new).any():
                     p_estimate = p_estimate_new
                 else:
-                    print("WARNING: Position estimate is NaN, falied to converge")
+                    print("WARNING: Position estimate is NaN, failed to converge. Using starting position estimate...")
+                    p_estimate = self.positions[i_spot, :]
                     break
 
                 spot_intensity = np.sum(bg_corr_spot_pixels * inner_mask)
                 bg_std = np.std(spot_bg[bg_mask==1])
-
 
                 if estimate_change < 1e-6:
                     converged = True
@@ -359,7 +360,6 @@ class Spots:
             self.spot_intensity[i_spot] = spot_intensity
             self.snr[i_spot] = snr
             self.converged[i_spot] = converged
-
             self.positions[i_spot, :] = p_estimate
             
     def get_spot_widths(self, frame, params):

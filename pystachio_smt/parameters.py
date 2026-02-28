@@ -85,6 +85,12 @@ default_parameters = {
           'level': 'basic',
           'class': 'image',
           'default': 0 },
+    'use_channel':
+        { 'description': 'Flag to use only one channel of a non-ALEX acquisition',
+         'level': 'basic',
+         'class': 'image',
+         'options': ['None', 'Left', 'Right', 'Both'],
+         'default': 'None' },
     'channel_split':
         { 'description': 'If/how the frames are split spatially',
           'level': 'basic',
@@ -159,6 +165,18 @@ default_parameters = {
           'class': 'simulation',
           'default': False },
 
+    'photoblink':
+        { 'description': 'Allow fully bleached spots to photoblink',
+          'level': 'basic',
+          'class': 'simulation',
+          'default': True },
+
+    'p_photoblink':
+        { 'description': 'Probability that a bleached fluorophore blinks',
+          'level': 'basic',
+          'class': 'simulation',
+          'default': 0.001 },    
+    
     # Tracking parameters
     'bw_threshold_tolerance':
         { 'description': 'Threshold for generating the b/w image relative to the peak intensity',
@@ -227,7 +245,7 @@ default_parameters = {
         { 'description': 'Flag to specify whether or not to Chung-Kennedy filter intensity tracks',
           'level': 'basic',
           'class': 'postprocessing',
-          'default': True},
+          'default': False},
     'msd_num_points':
         { 'description': 'Number of points used to calculate the mean-squared displacement',
           'level': 'basic',
@@ -269,6 +287,16 @@ default_parameters = {
           'class': 'postprocessing',
           'description': '?',
           'default': False },
+    'L_isingle':{
+        'level' : 'intermediate',
+        'class' : 'postprocessing',
+        'default' : '10000',
+        },
+    'R_isingle':{
+        'level' : 'intermediate',
+        'class' : 'postprocessing',
+        'default' : '10000',
+        },
 }
 
 
