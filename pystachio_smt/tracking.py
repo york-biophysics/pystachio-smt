@@ -100,6 +100,7 @@ def track_frame(frame_data, frame, params):
 
         frame_spots.get_spot_intensities(frame_data.as_image()[:,:], params)
         frame_spots.get_spot_widths(frame_data.as_image()[:,:], params)
+        frame_spots.get_precision(frame_data.as_image()[:,:], params) # Lewis edit
         if params.verbose:
             print(
                 f"Frame {frame:4d}: found {frame_spots.num_spots:3d} spots "
