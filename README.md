@@ -56,7 +56,9 @@ PySTACHIO SMT uses a few fairly common libraries, listed in `requirements.txt`
 In short, these are:
 - *Numpy* for array handling
 - *OpenCV* for image processing
-- *Dash/Plotly* for a web interface.
+- *TiffFile* for handling opening and saving images
+- *Matplotlib* for plotting and some simple GUI implementations
+- *tensorflow* for machine learning models
 
 Installation of these can be performed as such:
 ```{bash}

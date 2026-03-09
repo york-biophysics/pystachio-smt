@@ -1,9 +1,6 @@
 numpy
 opencv-python
-dash
-dash-bootstrap-components
 scipy
 matplotlib
 numba
 tifffile
-pandas
