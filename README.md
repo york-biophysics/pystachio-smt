@@ -87,8 +87,6 @@ The complete list of tasks currently implemented is:
 - `simulate`: Create a simulated psuedo-dataset based upon a set of parameters
 - `track`: Track the spots in a given dataset and produce predicted trajectories for that dataset.
 - `postprocess`: Perform postprocessing on tracked trajectories
-- `view`: View the dataset using the `Matplotlib` library.
-- `app`: Launch the web application at http://localhost:8050
 
 
 ## Contributing
