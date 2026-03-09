@@ -30,8 +30,8 @@ def postprocess(params, simulated=False):
         # Get a cutoff frame so we use last 2/3 of data for Isingle
         lastframe = 0
         for traj in trajs:
-            if traj.endframe > lastframe:
-                lastframe = traj.endframe
+            if traj.end_frame > lastframe:
+                lastframe = traj.end_frame
         cutoff_frame = int(lastframe*2./3.)
         snrs = np.array([])
         for i in range(len(spots)):
@@ -72,12 +72,12 @@ def postprocess(params, simulated=False):
         Llastframe = 0
         for traj in Ltrajs:
             if traj.endframe > Llastframe:
-                Llastframe = traj.endframe
+                Llastframe = traj.end_frame
         Lcutoff_frame = int(Llastframe*2./3.)
         Rlastframe = 0
         for traj in Rtrajs:
             if traj.endframe > Rlastframe:
-                Rlastframe = traj.endframe
+                Rlastframe = traj.end_frame
         Rcutoff_frame = int(Rlastframe*2./3.)
 
         Rintensities= np.array([])
@@ -714,9 +714,9 @@ def overtrack(params, trajs, channel=None):
         for i in range(len(ints)):
             outstr = str(traj.id) + "\t" + str(traj.start_frame+i) + "\t" + str(ints[i]) + "\n"
             f.write(outstr)
-        plt.plot(range(traj.start_frame, end), ints, lw=1, label="Trajectory "+str(traj.id))
-        plt.title("Overtracked trajectories")
-        plt.xlabel("Frame number")
-        plt.ylabel("Intensity (a.u.)")
-        plt.savefig(params.name+"_overtracked_trajectory_intensities_plot.png", dpi=300)
-        plt.close()
+        # plt.plot(range(traj.start_frame, end), ints, lw=1, label="Trajectory "+str(traj.id))
+        # plt.title("Overtracked trajectories")
+        # plt.xlabel("Frame number")
+        # plt.ylabel("Intensity (a.u.)")
+        # plt.savefig(params.name+"_overtracked_trajectory_intensities_plot.png", dpi=300)
+        # plt.close()
