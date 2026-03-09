@@ -423,7 +423,7 @@ def get_isingle(params, intensities, channel=None):
     for i in range(len(intensities)):
         f.write(str(intensities[i])+"\n")
     f.close()
-    f = open("i_single_peak.dat", 'w')
+    f = open(outseed+"_i_single_peak.dat", 'w')
     f.write(str(peak))
     f.close()
     
@@ -475,7 +475,7 @@ def get_diffusion_coef(traj_list, params, channel=None):
                 loc_precisions.append(np.sqrt(popt[1]) / 4.0)
         except:
             print("WARNING: Unable to fit curve")
-    plt.savefig("MSD_fit_plot.png", dpi=300)
+    plt.savefig(params.name+"_MSD_fit_plot.png", dpi=300)
     plt.close()
     plt.hist(diffusion_coefs)
     plt.xlabel("Diffusion coefficient ($\mu$m$^{2}$s$^{-1}$)")
