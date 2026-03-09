@@ -27,11 +27,18 @@ def postprocess(params, simulated=False):
             print(f"Looking at {len(trajs)} trajectories across {len(spots)} frames")
 
         intensities = np.array([])
+        # Get a cutoff frame so we use last 2/3 of data for Isingle
+        lastframe = 0
+        for traj in trajs:
+            if traj.endframe > lastframe:
+                lastframe = traj.endframe
+        cutoff_frame = int(lastframe*2./3.)
         snrs = np.array([])
         for i in range(len(spots)):
-            tmp = spots[i].spot_intensity
             tmp_snr = spots[i].snr
-            intensities = np.concatenate((intensities,tmp))
+            if spots[i].frame >= cutoff_frame:
+                tmp = spots[i].spot_intensity
+                intensities = np.concatenate((intensities,tmp))
             snrs = np.concatenate((snrs,tmp_snr))
 
         if params.calculate_isingle:
@@ -62,6 +69,16 @@ def postprocess(params, simulated=False):
         Ltrajs = trajectories.read_trajectories(params.name + "_Lchannel_trajectories.tsv")
         Rspots = trajectories.to_spots(Rtrajs)
         Lspots = trajectories.to_spots(Ltrajs)
+        Llastframe = 0
+        for traj in Ltrajs:
+            if traj.endframe > Llastframe:
+                Llastframe = traj.endframe
+        Lcutoff_frame = int(Llastframe*2./3.)
+        Rlastframe = 0
+        for traj in Rtrajs:
+            if traj.endframe > Rlastframe:
+                Rlastframe = traj.endframe
+        Rcutoff_frame = int(Rlastframe*2./3.)
 
         Rintensities= np.array([])
         Rsnrs = np.array([])
@@ -72,10 +89,12 @@ def postprocess(params, simulated=False):
         Lintensities= np.array([])
         Lsnrs = np.array([])         
         for i in range(len(Rspots)):
-            Rintensities = np.concatenate((Rintensities,Rspots[i].spot_intensity))
+            if Rspots[i].frame >= Rcutoff_frame:
+                Rintensities = np.concatenate((Rintensities,Rspots[i].spot_intensity))
             Rsnrs = np.concatenate((Rsnrs,Rspots[i].snr))
         for i in range(len(Lspots)):
-            Lintensities = np.concatenate((Lintensities,Lspots[i].spot_intensity))
+            if Lspots[i].frame >= Lcutoff_frame:
+                Lintensities = np.concatenate((Lintensities,Lspots[i].spot_intensity))
             Lsnrs = np.concatenate((Lsnrs,Lspots[i].snr))            
         if params.calculate_isingle:
             try:
@@ -444,7 +463,6 @@ def get_diffusion_coef(traj_list, params, channel=None):
         tau = np.concatenate((np.array([0]), tau))
         MSD = np.concatenate((np.array([2*0.04**2]), MSD))
         weights = np.concatenate((np.array([weights[0]]), weights))
-        plt.scatter(tau, MSD)
         plt.xlabel(r"$\tau$")
         plt.ylabel("MSD ($\mu$m$^2$)")
         try:
@@ -457,12 +475,7 @@ def get_diffusion_coef(traj_list, params, channel=None):
                 loc_precisions.append(np.sqrt(popt[1]) / 4.0)
         except:
             print("WARNING: Unable to fit curve")
-        ofile = params.name+f"_trajectory{traj.id}_MSD_fit.png"
-        plt.savefig(ofile, dpi=300)
-        plt.close()
     plt.savefig("MSD_fit_plot.png", dpi=300)
-    if params.display_figures:
-        plt.show()
     plt.close()
     plt.hist(diffusion_coefs)
     plt.xlabel("Diffusion coefficient ($\mu$m$^{2}$s$^{-1}$)")
@@ -474,7 +487,6 @@ def get_diffusion_coef(traj_list, params, channel=None):
         plt.title("Right channel diffusion coefficients\nMean = %3.2f"%(np.mean(diffusion_coefs)))
         ofile = params.name+"_Rchannel_diff_coeff.png"
     else:
-        #plt.title("Whole frame diffusion coefficients\nMean = %3.2f"%(np.mean(diffusion_coefs)))
         ofile = params.name+"_diff_coeff.png"
     plt.savefig(ofile, dpi=300)
     if params.display_figures:
@@ -706,5 +718,5 @@ def overtrack(params, trajs, channel=None):
         plt.title("Overtracked trajectories")
         plt.xlabel("Frame number")
         plt.ylabel("Intensity (a.u.)")
-        # plt.legend()
         plt.savefig(params.name+"_overtracked_trajectory_intensities_plot.png", dpi=300)
+        plt.close()
