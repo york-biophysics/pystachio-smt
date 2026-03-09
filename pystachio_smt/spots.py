@@ -16,7 +16,7 @@ Contains:
     class Spots
 
 Author:
-    Edward Higgins
+    Edward Higgins, Jack Shepherd
 
 Version: 0.2.0
 """
@@ -161,6 +161,12 @@ class Spots:
               or self.positions[i,1] < params.subarray_halfwidth \
               or self.positions[i,1] >= frame.frame_size[1] - params.subarray_halfwidth:
                 continue
+
+            # Filter spots that appear not to be circular (unless we are doing astigmatism)
+            if params.astigmatism == False:
+                if self.width[i,0] / self.width[i,1] >= 2 \
+                   or self.width[i,1] / self.width[i,0] >= 2:
+                    continue
 
             positions.append(self.positions[i, :])
             clipping.append(self.clipping[i])
