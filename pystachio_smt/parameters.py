@@ -302,6 +302,12 @@ default_parameters = {
         'class' : 'postprocessing',
         'default' : '10000',
         },
+    'isingle_fraction'{
+        'level' : 'advanced',
+        'class' : 'postprocessing',
+        'description' : 'What % of frames to use when estimating Isingle. The specified percentage will be at the end of the acquisition, i.e. when things should have photobleached already',
+        'default' : 66
+        }
 }
 
 

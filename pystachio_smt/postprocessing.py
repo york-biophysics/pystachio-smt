@@ -32,7 +32,7 @@ def postprocess(params, simulated=False):
         for traj in trajs:
             if traj.end_frame > lastframe:
                 lastframe = traj.end_frame
-        cutoff_frame = int(lastframe*2./3.)
+        cutoff_frame = int(lastframe*params.isingle_fraction/100.)
         snrs = np.array([])
         for i in range(len(spots)):
             tmp_snr = spots[i].snr
@@ -73,12 +73,12 @@ def postprocess(params, simulated=False):
         for traj in Ltrajs:
             if traj.endframe > Llastframe:
                 Llastframe = traj.end_frame
-        Lcutoff_frame = int(Llastframe*2./3.)
+        Lcutoff_frame = int(Llastframe*params.isingle_fraction/100.)
         Rlastframe = 0
         for traj in Rtrajs:
             if traj.endframe > Rlastframe:
                 Rlastframe = traj.end_frame
-        Rcutoff_frame = int(Rlastframe*2./3.)
+        Rcutoff_frame = int(Rlastframe*params.isingle_fraction/100.)
 
         Rintensities= np.array([])
         Rsnrs = np.array([])
