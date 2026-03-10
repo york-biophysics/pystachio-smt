@@ -22,7 +22,7 @@ Version: 0.2.0
 """
 
 import sys
-
+import math
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
@@ -44,6 +44,9 @@ class Spots:
             self.converged = np.zeros([num_spots], dtype=np.int8)
             self.exists = True
             self.width = np.zeros((num_spots,2))
+            # Lewis edits
+            self.noise = np.zeros(num_spots)
+            self.precision = np.zeros((num_spots,2))
         else:
             self.frame = frame
             self.exists = False
@@ -59,6 +62,9 @@ class Spots:
         self.traj_num = [-1] * self.num_spots
         self.snr = np.zeros([self.num_spots])
         self.converged = np.zeros([self.num_spots],dtype=np.int8)
+        # Lewis edits
+        self.noise = np.zeros(self.num_spots)
+        self.precision = np.zeros((self.num_spots,2))
 
         for i in range(self.num_spots):
             self.positions[i, :] = positions[i]
@@ -151,15 +157,17 @@ class Spots:
             # Fliter spots that are too noisy to be useful candidates
             if self.snr[i] <= params.snr_filter_cutoff:
                 continue
-            # Fitler spots that are outside of any existing mask
-            if frame.has_mask and frame.mask_data[round(self.positions[i,1]), round(self.positions[i,0])] == 0:
-                continue
             
             # Filter spots too close to the edge to give good numbers
             if self.positions[i,0] < params.subarray_halfwidth \
               or self.positions[i,0] >= frame.frame_size[0] - params.subarray_halfwidth \
               or self.positions[i,1] < params.subarray_halfwidth \
               or self.positions[i,1] >= frame.frame_size[1] - params.subarray_halfwidth:
+                continue
+            
+            # Fitler spots that are outside of any existing mask --> Lewis edit, this used to be before the edge filter spots were rounding to outside the mask dimensions
+            #print(round(self.positions[i,1]),round(self.positions[i,0]))
+            if frame.has_mask and frame.mask_data[round(self.positions[i,1]), round(self.positions[i,0])] == 0:
                 continue
 
             # Filter spots that appear not to be circular (unless we are doing astigmatism)
@@ -345,8 +353,9 @@ class Spots:
                 if not np.isnan(p_estimate_new).any():
                     p_estimate = p_estimate_new
                 else:
-                    print("WARNING: Position estimate is NaN, failed to converge. Using starting position estimate...")
-                    p_estimate = self.positions[i_spot, :]
+                    print("WARNING: Position estimate is NaN, falied to converge")
+                    p_estimate = self.positions[i_spot,:]
+                    converged = False
                     break
 
                 spot_intensity = np.sum(bg_corr_spot_pixels * inner_mask)
@@ -366,6 +375,7 @@ class Spots:
             self.spot_intensity[i_spot] = spot_intensity
             self.snr[i_spot] = snr
             self.converged[i_spot] = converged
+            self.noise[i_spot] = bg_std # Lewis edit 
             self.positions[i_spot, :] = p_estimate
             
     def get_spot_widths(self, frame, params):
@@ -393,3 +403,28 @@ class Spots:
             else: # something went wrong
                 self.width[i,0] = params.psf_width
                 self.width[i,1] = params.psf_width
+                
+    def get_precision(self, frame, params): # Lewis edit 
+        for i in range(self.num_spots):
+            width_x = self.width[i,0] * params.pixel_size * 1000
+            width_y = self.width[i,1] * params.pixel_size * 1000
+            
+            a = params.pixel_size * 1000
+            
+            qe = 0.95
+            gain = 1
+            
+            intensity = self.spot_intensity[i] 
+            bg_int = self.bg_intensity[i]
+            N = intensity #(intensity * gain)/qe
+            b = self.noise[i]
+            
+            precision_x = (width_x**2 + (a**2)/12)/(N) + (8*math.pi*(width_x**4)*(b**2))/((a**2)*(N**2))
+            
+            precision_y = (width_x**2 + (a**2)/12)/(N) + (8*math.pi*(width_x**4)*(b**2))/((a**2)*(N**2))
+            
+            self.precision[i,0] = np.sqrt(precision_x)
+            self.precision[i,1] = np.sqrt(precision_y)
+            
+            
+            
