@@ -463,10 +463,7 @@ def get_diffusion_coef(traj_list, params, channel=None):
         tau = np.concatenate((np.array([0]), tau))
         MSD = np.concatenate((np.array([2*0.04**2]), MSD))
         weights = np.concatenate((np.array([weights[0]]), weights))
-<<<<<<< HEAD
-=======
         plt.scatter(tau, MSD)
->>>>>>> master
         plt.xlabel(r"$\tau$")
         plt.ylabel("MSD ($\mu$m$^2$)")
         try:
@@ -474,27 +471,14 @@ def get_diffusion_coef(traj_list, params, channel=None):
             # if popt[0] > 0:
             diffusion_coefs.append(popt[0] / 4.0)
             ids.append(traj.id)
-<<<<<<< HEAD
-            plt.plot(tau, straightline(tau, popt[0], popt[1]))
-=======
             #plt.plot(tau, straightline(tau, popt[0], popt[1])) #Uncomment if you want individual plots
->>>>>>> master
             if popt[1] > 0:
                 loc_precisions.append(np.sqrt(popt[1]) / 4.0)
         except:
             print("WARNING: Unable to fit curve")
-<<<<<<< HEAD
-    plt.savefig(params.name+"_MSD_fit_plot.png", dpi=300)
-=======
         ofile = params.name+f"_trajectory{traj.id}_MSD_fit.png"
         #plt.savefig(ofile, dpi=300) #Uncomment if you want individual plots
         plt.close()
-    #plt.savefig(params.name+"_MSD_fit_plot.png", dpi=300) # This never seems to work (Lewis)
-    if params.display_figures:
-        #plt.show()
-        plt.close()
->>>>>>> master
-    plt.close()
     plt.hist(diffusion_coefs)
     plt.xlabel("Diffusion coefficient ($\mu$m$^{2}$s$^{-1}$)")
     plt.ylabel("Number of foci trajectories")
@@ -708,17 +692,9 @@ def overtrack(params, trajs, channel=None):
             x += image_data.frame_size[0]//2
         final_frame = traj.end_frame
         if final_frame+11 >= params.num_frames:
-<<<<<<< HEAD
             end = params.num_frames
         else:
             end = final_frame+11
-=======
-        #if final_frame+50 >= params.num_frames:
-            end = params.num_frames
-        else:
-            end = final_frame+11
-            #end = final_frame+50
->>>>>>> master
         for frame in range(final_frame+1,end):
             image = image_data.pixel_data[frame,:,:]
             # Create a tmp array with the centre of the spot in the centre
