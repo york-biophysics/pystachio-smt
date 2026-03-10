@@ -27,11 +27,18 @@ def postprocess(params, simulated=False):
             print(f"Looking at {len(trajs)} trajectories across {len(spots)} frames")
 
         intensities = np.array([])
+        # Get a cutoff frame so we use last 2/3 of data for Isingle
+        lastframe = 0
+        for traj in trajs:
+            if traj.end_frame > lastframe:
+                lastframe = traj.end_frame
+        cutoff_frame = int(lastframe*params.isingle_fraction/100.)
         snrs = np.array([])
         for i in range(len(spots)):
-            tmp = spots[i].spot_intensity
             tmp_snr = spots[i].snr
-            intensities = np.concatenate((intensities,tmp))
+            if spots[i].frame >= cutoff_frame:
+                tmp = spots[i].spot_intensity
+                intensities = np.concatenate((intensities,tmp))
             snrs = np.concatenate((snrs,tmp_snr))
 
         if params.calculate_isingle:
@@ -41,7 +48,7 @@ def postprocess(params, simulated=False):
                 print("Error finding Isingle - using default/specified value")
         else:
             calculated_isingle = params.I_single
-        calculated_snr = plot_snr(params,snrs)
+#        calculated_snr = plot_snr(params,snrs)
         dc, lp = get_diffusion_coef(trajs, params)
         if simulated:
             if params.verbose:
@@ -62,6 +69,16 @@ def postprocess(params, simulated=False):
         Ltrajs = trajectories.read_trajectories(params.name + "_Lchannel_trajectories.tsv")
         Rspots = trajectories.to_spots(Rtrajs)
         Lspots = trajectories.to_spots(Ltrajs)
+        Llastframe = 0
+        for traj in Ltrajs:
+            if traj.endframe > Llastframe:
+                Llastframe = traj.end_frame
+        Lcutoff_frame = int(Llastframe*params.isingle_fraction/100.)
+        Rlastframe = 0
+        for traj in Rtrajs:
+            if traj.endframe > Rlastframe:
+                Rlastframe = traj.end_frame
+        Rcutoff_frame = int(Rlastframe*params.isingle_fraction/100.)
 
         Rintensities= np.array([])
         Rsnrs = np.array([])
@@ -72,10 +89,12 @@ def postprocess(params, simulated=False):
         Lintensities= np.array([])
         Lsnrs = np.array([])         
         for i in range(len(Rspots)):
-            Rintensities = np.concatenate((Rintensities,Rspots[i].spot_intensity))
+            if Rspots[i].frame >= Rcutoff_frame:
+                Rintensities = np.concatenate((Rintensities,Rspots[i].spot_intensity))
             Rsnrs = np.concatenate((Rsnrs,Rspots[i].snr))
         for i in range(len(Lspots)):
-            Lintensities = np.concatenate((Lintensities,Lspots[i].spot_intensity))
+            if Lspots[i].frame >= Lcutoff_frame:
+                Lintensities = np.concatenate((Lintensities,Lspots[i].spot_intensity))
             Lsnrs = np.concatenate((Lsnrs,Lspots[i].snr))            
         if params.calculate_isingle:
             try:
@@ -444,7 +463,10 @@ def get_diffusion_coef(traj_list, params, channel=None):
         tau = np.concatenate((np.array([0]), tau))
         MSD = np.concatenate((np.array([2*0.04**2]), MSD))
         weights = np.concatenate((np.array([weights[0]]), weights))
+<<<<<<< HEAD
+=======
         plt.scatter(tau, MSD)
+>>>>>>> master
         plt.xlabel(r"$\tau$")
         plt.ylabel("MSD ($\mu$m$^2$)")
         try:
@@ -452,11 +474,18 @@ def get_diffusion_coef(traj_list, params, channel=None):
             # if popt[0] > 0:
             diffusion_coefs.append(popt[0] / 4.0)
             ids.append(traj.id)
+<<<<<<< HEAD
+            plt.plot(tau, straightline(tau, popt[0], popt[1]))
+=======
             #plt.plot(tau, straightline(tau, popt[0], popt[1])) #Uncomment if you want individual plots
+>>>>>>> master
             if popt[1] > 0:
                 loc_precisions.append(np.sqrt(popt[1]) / 4.0)
         except:
             print("WARNING: Unable to fit curve")
+<<<<<<< HEAD
+    plt.savefig(params.name+"_MSD_fit_plot.png", dpi=300)
+=======
         ofile = params.name+f"_trajectory{traj.id}_MSD_fit.png"
         #plt.savefig(ofile, dpi=300) #Uncomment if you want individual plots
         plt.close()
@@ -464,6 +493,7 @@ def get_diffusion_coef(traj_list, params, channel=None):
     if params.display_figures:
         #plt.show()
         plt.close()
+>>>>>>> master
     plt.close()
     plt.hist(diffusion_coefs)
     plt.xlabel("Diffusion coefficient ($\mu$m$^{2}$s$^{-1}$)")
@@ -475,7 +505,6 @@ def get_diffusion_coef(traj_list, params, channel=None):
         plt.title("Right channel diffusion coefficients\nMean = %3.2f"%(np.mean(diffusion_coefs)))
         ofile = params.name+"_Rchannel_diff_coeff.png"
     else:
-        #plt.title("Whole frame diffusion coefficients\nMean = %3.2f"%(np.mean(diffusion_coefs)))
         ofile = params.name+"_diff_coeff.png"
     plt.savefig(ofile, dpi=300)
     if params.display_figures:
@@ -505,7 +534,14 @@ def plot_traj_intensities(params, trajs, channel=None, chung_kennedy=True):
         plt.plot(t/10**3)
         if params.chung_kennedy: ck_data.append(chung_kennedy_filter(t,params.chung_kennedy_window,1)[0][:-1])
     if params.chung_kennedy:
+<<<<<<< HEAD
+        if clickmode:
+            ofile = params.name+"_click_mode_chung_kennedy_data.csv"
+        else:
+            ofile = params.name+"_chung_kennedy_data.csv"
+=======
         ofile = params.name+"_chung_kennedy_data.csv"
+>>>>>>> master
         f = open(ofile, 'w')
         ck_data = np.array(ck_data, dtype=object)
         for ck in range(len(ck_data)): 
@@ -594,7 +630,11 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
     ids = np.array(ids)
     if stoics.size<=1:
         print("Not enough stoic data to do a KDE/further plotting")
+<<<<<<< HEAD
+        return stoics
+=======
         return
+>>>>>>> master
     max_stoic = int(np.round(np.amax(stoics)))
 
     bandwidth = 0.7
@@ -676,11 +716,17 @@ def overtrack(params, trajs, channel=None):
             x += image_data.frame_size[0]//2
         final_frame = traj.end_frame
         if final_frame+11 >= params.num_frames:
+<<<<<<< HEAD
+            end = params.num_frames
+        else:
+            end = final_frame+11
+=======
         #if final_frame+50 >= params.num_frames:
             end = params.num_frames
         else:
             end = final_frame+11
             #end = final_frame+50
+>>>>>>> master
         for frame in range(final_frame+1,end):
             image = image_data.pixel_data[frame,:,:]
             # Create a tmp array with the centre of the spot in the centre
@@ -702,11 +748,19 @@ def overtrack(params, trajs, channel=None):
         for i in range(len(ints)):
             outstr = str(traj.id) + "\t" + str(traj.start_frame+i) + "\t" + str(ints[i]) + "\n"
             f.write(outstr)
+<<<<<<< HEAD
+=======
         # Uncomment if necessary
+>>>>>>> master
         # plt.plot(range(traj.start_frame, end), ints, lw=1, label="Trajectory "+str(traj.id))
         # plt.title("Overtracked trajectories")
         # plt.xlabel("Frame number")
         # plt.ylabel("Intensity (a.u.)")
+<<<<<<< HEAD
+        # plt.savefig(params.name+"_overtracked_trajectory_intensities_plot.png", dpi=300)
+        # plt.close()
+=======
         # #plt.legend()
         # plt.savefig(params.name+"_overtracked_trajectory_intensities_plot.png", dpi=300)
     plt.close()
+>>>>>>> master

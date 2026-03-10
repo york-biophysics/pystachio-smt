@@ -16,7 +16,7 @@ Contains:
     class Spots
 
 Author:
-    Edward Higgins
+    Edward Higgins, Jack Shepherd
 
 Version: 0.2.0
 """
@@ -170,6 +170,12 @@ class Spots:
             if frame.has_mask and frame.mask_data[round(self.positions[i,1]), round(self.positions[i,0])] == 0:
                 continue
 
+            # Filter spots that appear not to be circular (unless we are doing astigmatism)
+            if params.astigmatism == False:
+                if self.width[i,0] / self.width[i,1] >= 2 \
+                   or self.width[i,1] / self.width[i,0] >= 2:
+                    continue
+
             positions.append(self.positions[i, :])
             clipping.append(self.clipping[i])
             bg_intensity.append(self.bg_intensity[i])
@@ -261,6 +267,7 @@ class Spots:
 
             # Get the centre estimate, make sure the spot_region fits in the frame
             p_estimate = self.positions[i_spot, :]
+
             for d in (0, 1):
                 if round(p_estimate[d]) < r:
                     p_estimate[d] = r
@@ -354,7 +361,6 @@ class Spots:
                 spot_intensity = np.sum(bg_corr_spot_pixels * inner_mask)
                 bg_std = np.std(spot_bg[bg_mask==1])
 
-
                 if estimate_change < 1e-6:
                     converged = True
 
@@ -370,7 +376,6 @@ class Spots:
             self.snr[i_spot] = snr
             self.converged[i_spot] = converged
             self.noise[i_spot] = bg_std # Lewis edit 
-
             self.positions[i_spot, :] = p_estimate
             
     def get_spot_widths(self, frame, params):

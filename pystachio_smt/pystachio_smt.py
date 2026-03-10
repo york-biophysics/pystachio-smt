@@ -29,19 +29,15 @@ import postprocessing
 import simulation
 import tracking
 import trajectories
-import visualisation
-import dash_ui.launcher
 
 def main():
     params = parameters.Parameters()
     params.read(sys.argv[1:])
+    
     sim=False
     
     for task in params.task:
-        if task == "app":
-            dash_ui.launcher.launch_app(params)
-
-        elif task == "help":
+        if task == "help":
             if (len(sys.argv) > 2):
                 params.help(sys.argv[2])
             else:
@@ -56,9 +52,6 @@ def main():
 
         elif task == "postprocess":
             postprocessing.postprocess(params, simulated=sim)
-
-        elif task == "view":
-            visualisation.render(params)
 
         elif task == "compare":
             trajectories.compare_trajectories(params)

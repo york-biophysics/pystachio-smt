@@ -165,6 +165,18 @@ default_parameters = {
           'class': 'simulation',
           'default': False },
 
+    'photoblink':
+        { 'description': 'Allow fully bleached spots to photoblink',
+          'level': 'basic',
+          'class': 'simulation',
+          'default': True },
+
+    'p_photoblink':
+        { 'description': 'Probability that a bleached fluorophore blinks',
+          'level': 'basic',
+          'class': 'simulation',
+          'default': 0.001 },    
+    
     # Tracking parameters
     'bw_threshold_tolerance':
         { 'description': 'Threshold for generating the b/w image relative to the peak intensity',
@@ -217,6 +229,11 @@ default_parameters = {
           'level': 'advanced',
           'class': 'tracking',
           'default': 5 },
+    'astigmatism':
+        { 'description': 'Whether to do astigmatic imaging or rejecting fitted PSFs that have a ratio of x:y widths >=2',
+          'level': 'basic',
+          'class': 'tracking',
+          'default': False },
 
     # Postprocessing parameters
     'display_figures':
@@ -285,6 +302,12 @@ default_parameters = {
         'class' : 'postprocessing',
         'default' : '10000',
         },
+    'isingle_fraction':{
+        'level' : 'advanced',
+        'class' : 'postprocessing',
+        'description' : 'What % of frames to use when estimating Isingle. The specified percentage will be at the end of the acquisition, i.e. when things should have photobleached already',
+        'default' : 66
+        }
 }
 
 

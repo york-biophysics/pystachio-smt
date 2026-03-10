@@ -1,4 +1,4 @@
-# PySTACHIO SMT
+# PySTACHIO SMT - 2026 Updated version 
 
 > **WARNING**
 > 
@@ -7,10 +7,10 @@
 > without warning.
 
 ## Introduction
-PySTACHIO SMT, to a first approximation, a Python port of Adam Wollman's Single
+PySTACHIO SMT is, to a first approximation, a Python port of Adam Wollman's Single
 Molecule Tools[1]. PySTACHIO provides a utility for tracking and analysing
 localisation microscopy data, providing features for spot tracking and spot
-intensity & trajectory analysis.
+intensity & trajectory analysis. This is an extended second version building off our first full release [2].
 
 ## Synopsis
 ```{bash}
@@ -20,13 +20,12 @@ $ pystachio <task> <seed name> [<parameter>=<value>...]
 For example:
 ```{bash}
 $ pystachio track data/exp_data
-$ pystachio simulate,view data/sim_data num_spots=10
-$ pystachio app data/exp_data
+$ pystachio simulate,track data/sim_data num_spots=10
 ```
-(Note: the `app` task is not yet fully functional)
+(Note: The old tasks "view" and "app" have been removed. These are superseded by new standalone utilities.)
 
 ## Overview
-PySTACHIO SMT can be used in two ways: A Web GUI for interactive use, or a
+PySTACHIO SMT can be used in two ways: GUIs for interactive use for both tracking and visualising results, or a
 command UI for terminal-based & scripted use. Both interfaces provide the
 following functionality:
 
@@ -43,12 +42,23 @@ This allows pseudo-microscopy data to be simulated based on a number of
 tunable parameters, such as the number of spots, number of frames, bleaching
 time, Signal-Noise ratio etc...
 
+## GUI-Only functionality
+### smFRET analysis
+This allows visualisation of single molecule FRET pairs, tracking intensity through time and estimating FRET efficiency as ... Only for immobile spots - for diffusing FRET sensors do a full two-colour analysis, colocalisation, and extract intensities from linked trajectories. Only works currently for ALEX data but this will be fixed eventually.
+### Click mode
+Allows the user to click an approximate spot position and see intensity through time, using Chung-Kennedy filtering or not. Only for immobile spots.
+### Results Viewer
+
+## AI/ML segmentation
+
 ## Installation
 PySTACHIO SMT uses a few fairly common libraries, listed in `requirements.txt`
 In short, these are:
 - *Numpy* for array handling
 - *OpenCV* for image processing
-- *Dash/Plotly* for a web interface.
+- *TiffFile* for handling opening and saving images
+- *Matplotlib* for plotting and some simple GUI implementations
+- *tensorflow* for machine learning models
 
 Installation of these can be performed as such:
 ```{bash}
@@ -79,8 +89,6 @@ The complete list of tasks currently implemented is:
 - `simulate`: Create a simulated psuedo-dataset based upon a set of parameters
 - `track`: Track the spots in a given dataset and produce predicted trajectories for that dataset.
 - `postprocess`: Perform postprocessing on tracked trajectories
-- `view`: View the dataset using the `Matplotlib` library.
-- `app`: Launch the web application at http://localhost:8050
 
 
 ## Contributing
@@ -94,13 +102,14 @@ Information on how to contribute to the PySTACHIO SMT project is available in
 
 ## Authors
 
-This code has been developed by Edward Higgins and Jack Shepherd in
+This code has been developed by Edward Higgins, Jack Shepherd, and Lewis Frame in
 collaboration with the Physics of Life group at the University of York. For more
-information, contact Edward at [ed.higgins@york.ac.uk](ed.higgins@york.ac.uk).
+information, contact Jack at [jack.shepherd@york.ac.uk](jack.shepherd@york.ac.uk).
 
 ## License
 
-Copyright © 2021, Edward Higgins. Released under the MIT License.
+Released under the MIT License.
 
 ## References
 [1] [Single Molecule Tools](https://awollman.github.io/single-molecule-tools/)
+[2] [PySTACHIO published paper](https://www.sciencedirect.com/science/article/pii/S2001037021002944)
