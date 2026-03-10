@@ -47,6 +47,9 @@ class Trajectory:
         self.converged = [spots.converged[spot_id]]
         self.linked_traj = None
         self.width = [spots.width[spot_id]]
+        # Lewis edits
+        self.noise = [spots.noise[spot_id]]
+        self.precision = [spots.precision[spot_id]]
 
     def extend(self, spots, spot_id):
         if spots.frame > self.end_frame + 1:
@@ -58,6 +61,9 @@ class Trajectory:
         self.bg_intensity.append(spots.bg_intensity[spot_id])
         self.converged.append(spots.converged[spot_id])
         self.snr.append(spots.snr[spot_id])
+        self.width.append(spots.width[spot_id])
+        self.noise.append(spots.noise[spot_id])
+        self.precision.append(spots.precision[spot_id])
 
         self.length += 1
 
@@ -106,14 +112,15 @@ def build_trajectories(all_spots, params):
     return filtered_trajectories
 
 
-def write_trajectories(trajectories, filename):
+def write_trajectories(trajectories, filename): # Lewis correct width from traj.width[0][x/y] to traj.width[i][x/y] and added noise + precision
     f = open(filename, "w")
-    f.write(f"trajectory\tframe\tx\ty\tspot_intensity\tbg_intensity\tSNR\tconverged\twidthx\twidthy\n")
+    f.write(f"trajectory\tframe\tx\ty\tspot_intensity\tbg_intensity\tSNR\tconverged\twidthx\twidthy\tnoise\tprecision_x\tprecision_y\n")
     for traj in trajectories:
         for frame in range(traj.start_frame, traj.end_frame + 1):
             i = frame - traj.start_frame
+
             f.write(
-                f"{traj.id}\t{frame}\t{traj.path[i][0]}\t{traj.path[i][1]}\t{traj.intensity[i]}\t{traj.bg_intensity[i]}\t{traj.snr[i]}\t{traj.converged[i]}\t{traj.width[0][0]}\t{traj.width[0][1]}\n"
+                f"{traj.id}\t{frame}\t{traj.path[i][0]}\t{traj.path[i][1]}\t{traj.intensity[i]}\t{traj.bg_intensity[i]}\t{traj.snr[i]}\t{traj.converged[i]}\t{traj.width[i][0]}\t{traj.width[i][1]}\t{traj.noise[i]}\t{traj.precision[i][0]}\t{traj.precision[i][1]}\n"
             )
     f.close()
 
@@ -132,6 +139,8 @@ def to_spots(trajs):
         snr = []
         converged = []
         width = []
+        noise = []
+        precision = []
         for traj in trajs:
 
             if traj.end_frame > frame:
@@ -146,7 +155,10 @@ def to_spots(trajs):
             bg_intensity.append(traj.bg_intensity[i])
             snr.append(traj.snr[i])
             converged.append(traj.converged[i])
-            width.append(traj.width)
+            width.append(traj.width[i]) # Lewis changed to width[i] from width
+            # Lewis
+            noise.append(traj.noise[i])
+            precision.append(traj.precision[i])
 
 
         spots = Spots(len(positions), frame)
@@ -156,6 +168,10 @@ def to_spots(trajs):
         spots.snr = np.array(snr)
         spots.converged = np.array(converged, dtype=np.int8)
         spots.width=np.array(width)
+        #Lewis
+        spots.noise = np.array(noise)
+        spots.precision = np.array(precision)
+        
         all_spots.append(spots)
 
         frame += 1
@@ -182,6 +198,9 @@ def read_trajectories(filename):
             spot.snr[0] = float(line[6])
             spot.converged[0] = int(line[7])
             spot.width[0,:] = [float(line[8]),float(line[9])]
+            # Lewis
+            spot.noise[0] = float(line[10])
+            spot.precision[0,:] = [float(line[11]),float(line[12])]
 
             if traj_id != prev_traj_id:
                 trajectories.append(Trajectory(traj_id, spot, 0))
