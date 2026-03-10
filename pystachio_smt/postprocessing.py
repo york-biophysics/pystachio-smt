@@ -534,14 +534,10 @@ def plot_traj_intensities(params, trajs, channel=None, chung_kennedy=True):
         plt.plot(t/10**3)
         if params.chung_kennedy: ck_data.append(chung_kennedy_filter(t,params.chung_kennedy_window,1)[0][:-1])
     if params.chung_kennedy:
-<<<<<<< HEAD
         if clickmode:
             ofile = params.name+"_click_mode_chung_kennedy_data.csv"
         else:
             ofile = params.name+"_chung_kennedy_data.csv"
-=======
-        ofile = params.name+"_chung_kennedy_data.csv"
->>>>>>> master
         f = open(ofile, 'w')
         ck_data = np.array(ck_data, dtype=object)
         for ck in range(len(ck_data)): 
@@ -630,11 +626,7 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
     ids = np.array(ids)
     if stoics.size<=1:
         print("Not enough stoic data to do a KDE/further plotting")
-<<<<<<< HEAD
         return stoics
-=======
-        return
->>>>>>> master
     max_stoic = int(np.round(np.amax(stoics)))
 
     bandwidth = 0.7
@@ -748,19 +740,11 @@ def overtrack(params, trajs, channel=None):
         for i in range(len(ints)):
             outstr = str(traj.id) + "\t" + str(traj.start_frame+i) + "\t" + str(ints[i]) + "\n"
             f.write(outstr)
-<<<<<<< HEAD
-=======
         # Uncomment if necessary
->>>>>>> master
         # plt.plot(range(traj.start_frame, end), ints, lw=1, label="Trajectory "+str(traj.id))
         # plt.title("Overtracked trajectories")
         # plt.xlabel("Frame number")
         # plt.ylabel("Intensity (a.u.)")
-<<<<<<< HEAD
-        # plt.savefig(params.name+"_overtracked_trajectory_intensities_plot.png", dpi=300)
-        # plt.close()
-=======
         # #plt.legend()
         # plt.savefig(params.name+"_overtracked_trajectory_intensities_plot.png", dpi=300)
     plt.close()
->>>>>>> master
