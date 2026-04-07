@@ -573,16 +573,15 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
     startframe = 100000
     for traj in trajs:
         if traj.start_frame<startframe and traj.length>=params.num_stoic_frames: startframe=traj.start_frame
-        # print(startframe)
     for traj in trajs:
-        if traj.length <params.num_stoic_frames:
+        if traj.length < params.num_stoic_frames:
             continue
-        if traj.start_frame-startframe>4:
+        if traj.start_frame-startframe > 4:
             continue #stoics.append(traj.intensity[0] / isingle)
         if params.stoic_method == "Initial":
             # Initial intensity
             traj.stoichiometry = traj.intensity[0] / isingle
-            traj.stoichiometry = traj.stoichiometry[0]
+#            traj.stoichiometry = traj.stoichiometry[0]
         elif params.stoic_method == "Mean":
             # Mean of first N frames
             traj.stoichiometry = (
@@ -608,6 +607,12 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
         ids.append(traj.id)
     stoics = np.array(stoics)
     ids = np.array(ids)
+    f = open(oseed + "_data.tsv", "w")
+    f.write("trajectory\tstoichiometry\n")
+    for i in range(len(stoics)):
+        f.write(str(ids[i]) + "\t" + str(float(stoics[i]))+"\n")
+    f.close()
+
     if stoics.size<=1:
         print("Not enough stoic data to do a KDE/further plotting")
         return stoics
@@ -667,11 +672,6 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
     if params.display_figures:
         plt.show()
     plt.close()
-    f = open(oseed + "_data.tsv", "w")
-    f.write("trajectory\tstoichiometry\n")
-    for i in range(len(stoics)):
-        f.write(str(ids[i]) + "\t" + str(float(stoics[i]))+"\n")
-    f.close()
     return 0
 
 def overtrack(params, trajs, channel=None):
