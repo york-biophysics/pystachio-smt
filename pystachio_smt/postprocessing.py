@@ -607,6 +607,17 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
         ids.append(traj.id)
     stoics = np.array(stoics)
     ids = np.array(ids)
+
+    if channel=="L":
+        plt.title("Left channel stoichiometry")
+        oseed = params.name+"_Lchannel_stoichiometry"
+    elif channel=="R":
+        plt.title("Right channel stoichiometry")
+        oseed = params.name+"_Rchannel_stoichiometry"
+    else:
+        plt.title("Whole frame stoichiometry")
+        oseed = params.name+"_stoichiometry"
+
     f = open(oseed + "_data.tsv", "w")
     f.write("trajectory\tstoichiometry\n")
     for i in range(len(stoics)):
@@ -643,15 +654,6 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
     plt.xlabel("Rounded stoichiometry")
     plt.ylabel("N")
     
-    if channel=="L":
-        plt.title("Left channel stoichiometry")
-        oseed = params.name+"_Lchannel_stoichiometry"
-    elif channel=="R":
-        plt.title("Right channel stoichiometry")
-        oseed = params.name+"_Rchannel_stoichiometry"
-    else:
-        plt.title("Whole frame stoichiometry")
-        oseed = params.name+"_stoichiometry"
     plt.savefig(oseed+"_histogram.png", dpi=300)
     if params.display_figures:
         plt.show()
