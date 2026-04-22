@@ -2,8 +2,6 @@
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
-# Copyright © 2020 Edward Higgins <ed.higgins@york.ac.uk>
-#
 # Distributed under terms of the MIT license.
 
 """ SPOTS - Spot characterisation and manipulation module
