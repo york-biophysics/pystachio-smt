@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
-# Copyright © 2020 Edward Higgins <ed.higgins@york.ac.uk>
 #
 # Distributed under terms of the MIT license.
 
@@ -15,10 +14,10 @@ Description:
 Contains:
     function simulate
 
-Author:
-    Edward Higgins
+Authors:
+    Jack Shepherd and Ed Higgins
 
-Version: 0.2.0
+Version: 1.1
 """
 
 from functools import reduce
@@ -111,3 +110,65 @@ def simulate(params):
     image.write(params.name + ".tif")
     trajectories.write_trajectories(real_trajs, params.name + '_simulated.tsv')
     return image, real_trajs
+
+def simulate_spherical_volume(params):
+    # f = open(f"../trajectories/spherical_volume/spherical_volume_r{r}_dt{dt}_D{D}_trajectory.out", 'w')
+    # f.write("particle\tx\ty\tz\n")
+    if params.psf_name is None:
+        if params.pixel_size != 0.05:
+            print("WARNING: Default 3D PSF only works with pixel_size = 50 nm. Changing params.pixel_size to 50 nm")
+            params.pixel_size = 0.050
+        params.psf_name = '3d_psf.npy'
+    psf = np.load(params.psf_name)
+    r = params.spherical_volume_radius
+    D = params.diffusion_coeff
+    dt = params.frame_time
+    sigma = np.sqrt(2*D*dt)
+    v = np.zeros((params.num_spots,3), dtype='float64')
+    for i in range(params.num_spots):
+        while True:
+            x = random.uniform(-r,r)
+            y = random.uniform(-r,r)
+            z = random.uniform(-r,r)
+            if x**2 + y**2 + z**2 <= r**2:
+                v[i,:] = np.array([x,y,z])
+                break
+    for i in range(params.num_frames):
+        out_im = np.zeros((101,101,101)) # Central spot is 50,50,50, which we will take as the origin
+        for particle in range(params.num_spots):
+            dx = random.normal(0,sigma)
+            dy = random.normal(0,sigma)
+            dz = random.normal(0,sigma)
+            dv = np.array([dx,dy,dz], dtype='float64')
+            tmpv = v[particle,:]
+            tmpv += dv
+            if np.sum(tmpv**2) > r**2:
+                a = dv[0]**2 + dv[1]**2 + dv[2]**2
+                b = -2 * (tmpv[0]*dv[0] + tmpv[1]*dv[1] + tmpv[2]*dv[2])
+                c = tmpv[0]**2 + tmpv[1]**2 + tmpv[2]**2 - r**2
+                alpha1 = (-b + np.sqrt(b**2 - 4*a*c)) / (2*a) 
+                alpha2 = (-b - np.sqrt(b**2 - 4*a*c)) / (2*a)
+                if abs(alpha1)<abs(alpha2):
+                    tmpv -= alpha1*dv
+                else:
+                    tmpv -= alpha2*dv
+                # Check it worked
+                if tmpv[0]**2 + tmpv[1]**2 + tmpv[2]**2 - r**2 > 1E-6:
+                    print("ERROR: Didn't find surface!")
+                    exit(1)
+            v[particle,:] = np.copy(tmpv)
+            xpix = int(v[particle,2]/params.pixel_size) + 50
+            ypix = int(v[particle,1]/params.pixel_size) + 50
+            zpix = int(v[particle,0]/params.pixel_size) + 50
+            out_im[zpix-psf.shape[0]//2:zpix+psf.shape[0]//2+1,ypix-psf.shape[1]//2:ypix+psf.shape[1]//2+1,xpix-psf.shape[2]//2:xpix+psf.shape[2]//2+1] += psf[:,:,:]
+        #Take sum of central slices
+        tmp = np.sum(out_im[49:52,:,:], axis=0)
+        circle = plt.Circle((50,50),params.spherical_volume_radius/params.pixel_size, color='m', fill=False)
+        fig, ax = plt.subplots()
+        plt.imshow(tmp)
+        ax.add_patch(circle)
+        plt.show()
+    return 0
+
+def simulate_spherical_surface(params):
+    return 0

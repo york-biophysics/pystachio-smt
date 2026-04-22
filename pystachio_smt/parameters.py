@@ -176,6 +176,21 @@ default_parameters = {
           'level': 'basic',
           'class': 'simulation',
           'default': 0.001 },    
+
+    'psf_name':
+    { 'description': 'Name of the PSF .npy file to use for a 3D simulation',
+      'level': 'basic',
+      'class': 'simulation',
+      'default': None
+        }
+
+    'spherical_volume_radius':
+    { 'description': 'Radius in microns of the spherical volume in which to simulate 3D diffusion',
+      'level': 'basic',
+      'class': 'simulation',
+      'default': 1,
+        }
+
     
     # Tracking parameters
     'bw_threshold_tolerance':
@@ -261,7 +276,7 @@ default_parameters = {
           'level': 'advanced',
           'class': 'postprocessing',
           'default': 'Linear',
-          'options': ['Linear', 'Mean', 'Initial'] },
+          'options': ['Linear', 'Mean', 'Initial', 'Max'] },
     'num_stoic_frames': {
           'level': 'advanced',
           'class': 'postprocessing',

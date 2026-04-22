@@ -587,6 +587,11 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
             traj.stoichiometry = (
                 np.mean(traj.intensity[: params.num_stoic_frames]) / isingle
                 )
+        elif params.stoic_method == "Max":
+            # Mean of first N frames
+            traj.stoichiometry = (
+                np.amax(traj.intensity[: params.num_stoic_frames]) / isingle
+                )
         elif params.stoic_method == "Linear":
             xdata = (
                 np.arange(0, params.num_stoic_frames , dtype="float")
