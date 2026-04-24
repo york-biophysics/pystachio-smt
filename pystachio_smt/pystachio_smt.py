@@ -29,8 +29,12 @@ import postprocessing
 import simulation
 import tracking
 import trajectories
+<<<<<<< Updated upstream
 import visualisation
 import dash_ui.launcher
+=======
+import preprocess
+>>>>>>> Stashed changes
 
 def main():
     params = parameters.Parameters()
@@ -46,6 +50,9 @@ def main():
                 params.help(sys.argv[2])
             else:
                 params.help()
+
+        elif task == "preprocess":
+            preprocess.run_preprocessing(params)
 
         elif task == "track":
             tracking.track(params)

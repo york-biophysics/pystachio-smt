@@ -1,4 +1,8 @@
+<<<<<<< Updated upstream
 # PySTACHIO SMT
+=======
+# PyFRAME 
+>>>>>>> Stashed changes
 
 > **WARNING**
 > 
@@ -7,10 +11,14 @@
 > without warning.
 
 ## Introduction
+<<<<<<< Updated upstream
 PySTACHIO SMT, to a first approximation, a Python port of Adam Wollman's Single
 Molecule Tools[1]. PySTACHIO provides a utility for tracking and analysing
 localisation microscopy data, providing features for spot tracking and spot
 intensity & trajectory analysis.
+=======
+PyFRAME - Python Forcemap Reader And Measuring Elasticity 
+>>>>>>> Stashed changes
 
 ## Synopsis
 ```{bash}
@@ -30,6 +38,11 @@ PySTACHIO SMT can be used in two ways: A Web GUI for interactive use, or a
 command UI for terminal-based & scripted use. Both interfaces provide the
 following functionality:
 
+### Preprocessing
+This allows input experiment image data to be split into two channels and cropped to a specific ImageJ region of interest. Also includes calculation of a transformation matrix for channel registration and defining masks either from brightfield or fluorescence micrographs. 
+
+### 
+
 ### Spot tracking
 This allows input image data (either from experiment or simulation) to be
 imported into the program and spots tracked across multiple frames.
@@ -43,6 +56,22 @@ This allows pseudo-microscopy data to be simulated based on a number of
 tunable parameters, such as the number of spots, number of frames, bleaching
 time, Signal-Noise ratio etc...
 
+<<<<<<< Updated upstream
+=======
+
+
+## GUI-Only functionality
+### smFRET analysis
+This allows visualisation of single molecule FRET pairs, tracking intensity through time and estimating FRET efficiency as ... Only for immobile spots - for diffusing FRET sensors do a full two-colour analysis, colocalisation, and extract intensities from linked trajectories. Only works currently for ALEX data but this will be fixed eventually.
+### Click mode
+Allows the user to click an approximate spot position and see intensity through time, using Chung-Kennedy filtering or not. Only for immobile spots.
+
+### Results Viewer 
+This provides a convenient GUI to visualise the outputs from the PySTACHIO, including histograms of outputs for entire experiment folders, object by object analysis, overlays of tracks onto brightfield or fluorescence images and model fitting for diffusivity distributions. 
+
+## AI/ML segmentation
+
+>>>>>>> Stashed changes
 ## Installation
 PySTACHIO SMT uses a few fairly common libraries, listed in `requirements.txt`
 In short, these are:

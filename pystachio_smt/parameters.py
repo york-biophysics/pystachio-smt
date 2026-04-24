@@ -42,7 +42,7 @@ default_parameters = {
           'level': 'basic',
           'class': 'general',
           'default': [],
-          'options': ['simulate', 'track', 'postprocess', 'view', 'app'] },
+          'options': ['preprocess', 'simulate', 'track', 'postprocess', 'view', 'app'] }, # Added 'preprocess'
     'name':
         { 'description': 'Name prefixing all files associated with this run',
           'level': 'basic',
@@ -285,6 +285,107 @@ default_parameters = {
         'class' : 'postprocessing',
         'default' : '10000',
         },
+<<<<<<< Updated upstream
+=======
+    'isingle_fraction':{
+        'level' : 'advanced',
+        'class' : 'postprocessing',
+        'description' : 'What % of frames to use when estimating Isingle. The specified percentage will be at the end of the acquisition, i.e. when things should have photobleached already',
+        'default' : 66
+        },
+    
+    # Preprocessing parameters
+    'video_path':
+        { 'description': 'Path to the raw video TIFF',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': '' },
+    'bf_path':
+        { 'description': 'Path to the brightfield image',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': '' },
+    'bead_path':
+        { 'description': 'Path to the calibration bead TIFF',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': '' },
+    'manual_registration':
+        { 'description': 'Set True to manually click beads for alignment',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': False },
+    'manual_pairs':
+        { 'description': 'Number of bead pairs to click if manual_registration is True',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': 10 },
+    'tmats_path':
+        { 'description': 'Path to save/load transformation matrix',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': './transformation_matrix.npy' },
+    'model':
+        { 'description': 'Path to the segmentation model file (.h5)',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': 'model.h5' },
+    'model_type':
+        { 'description': 'Type of model (e.g., unet)',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': 'unet' },
+    'mask_type':
+        { 'description': 'Type of mask to generate',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': 'cell' },
+    'frame_avg':
+        { 'description': 'Number of frames to average for ROI/Mask generation',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': 5 },
+    'roi_channel':
+        { 'description': 'Channel to use for ROI generation (L or R)',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': 'L' },
+    'roi_file':
+        { 'description': 'Path to the ImageJ ROI zip file',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': 'roi.zip' },
+    'area_filter':
+        { 'description': 'Minimum area size for cell filtering',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': 0 },
+    'inv_bf':
+        { 'description': 'Invert brightfield image intensity',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': False },
+    'cell_fitting':
+        { 'description': 'Perform precise cell boundary fitting',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': False },
+    'mask_prefix':
+        { 'description': 'Prefix for saved mask files',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': '' },
+    'use_otsu':
+        { 'description': 'Use Otsu thresholding instead of model segmentation',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': False },
+    'overwrite':
+        { 'description': 'Overwrite existing output files',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': True }
+>>>>>>> Stashed changes
 }
 
 
@@ -421,35 +522,59 @@ class Parameters:
 
 
     def read(self, args):
-        self.task = args.pop(0)
-        self.task = self.task.split(",")
+        if "-r" in args:
+            try:
+                # Find where -r is and get the filename following it
+                tag_index = args.index("-r")
+                config_file = args.pop(tag_index + 1)
+                args.pop(tag_index) # Remove the "-r" itself
+
+                with open(config_file, 'r') as f:
+                    # Parse the file: ignore comments, empty lines, and strip whitespace
+                    file_args = []
+                    for line in f:
+                        line = line.split('#')[0].strip()
+                        if line:
+                            file_args.append(line)
+                    
+                args = file_args + args
+            except (IndexError, FileNotFoundError) as e:
+                sys.exit(f"ERROR: Could not read config file. {e}")
+
+        # --- Standard Command Line Parsing ---
+        if not args:
+            return # Or sys.exit usage info
+
+        self.task = args.pop(0).split(",")
+        
         if self.task == ['help']:
             return
-        elif self.task != ['app']:
+            
+        if self.task != ['app'] and args:
             self.name = args.pop(0)
 
+        # --- Key=Value Parsing for everything else ---
         for arg in args:
-            key, value = arg.split("=", 2)
+            if "=" not in arg:
+                continue
+                
+            key, value = arg.split("=", 1)
             try:
-                # use isinstance
-                if type(getattr(self, key)) is type(0):
+                current_val = getattr(self, key)
+                if isinstance(current_val, int):
                     setattr(self, key, int(value))
-
-                elif type(getattr(self, key)) is type(0.0):
+                elif isinstance(current_val, float):
                     setattr(self, key, float(value))
-
-                elif type(getattr(self, key)) is type(True):
+                elif isinstance(current_val, bool):
                     setattr(self, key, value == "True")
-
-                elif type(getattr(self, key)) is type([]):
+                elif isinstance(current_val, list):
                     setattr(self, key, list(map(lambda x: int(x), value.split(","))))
-
                 else:
                     setattr(self, key, value)
+            except (AttributeError, ValueError):
+                print(f"Warning: Unknown or invalid parameter '{key}'")
 
-            except NameError:
-                sys.exit(f"ERROR: No such parameter '{key}'")
-
+            # Link pixel_size to psf_width automatically
             if key == "pixel_size":
                 self.psf_width = 0.160 / self.pixel_size
 
