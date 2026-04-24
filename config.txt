@@ -1,0 +1,43 @@
+# ==============================================================================
+# PYSTACHIO & PREPROCESSING MASTER CONFIGURATION
+# ==============================================================================
+# Format: key=value
+# Note: Do NOT use spaces around the '=' sign. 
+# Booleans must be 'True' or 'False'.
+
+# --- RUNTIME SETUP ---
+tasks=preprocess,track,postprocess
+name=Exp_Cell_01_Analysis
+
+# --- IMAGE PROPERTIES (UNIVERSAL) ---
+pixel_size=0.051        # Microns per pixel
+ALEX=False              # Alternating Laser Excitation
+num_frames=0            # 0 to process entire movie
+frame_time=0.0075         # Time per frame in seconds
+
+# --- PREPROCESSING / SEGMENTATION ---
+video_path=./data/raw_video.tif
+bf_path=./data/brightfield.tif
+model=./models/unet_cell_seg.h5
+model_type=unet         # options: unet, keras, pytorch
+mask_type=AI            # options: AI, BF, FL_AI, WHOLE
+use_otsu=False          # Use Otsu thresholding instead of AI
+frame_avg=5             # Frames to average for mask generation
+area_filter=50          # Minimum area for detected cells (pixels)
+inv_bf=False            # Invert brightfield contrast
+cell_fitting=True       # Precise boundary fitting
+
+# --- CHANNEL REGISTRATION ---
+bead_path=./data/beads.tif
+manual_registration=False
+manual_pairs=10
+tmats_path=./transformation_matrix.npy
+
+# --- TRACKING PARAMETERS ---
+max_displacement=5      # Max pixels a spot can move between frames
+snr_filter_cutoff=0.4   # Signal-to-noise ratio threshold
+min_traj_len=2          # Minimum frames for a valid trajectory
+subarray_halfwidth=8    # 
+inner_mask_radius=5     # 
+filter_image=Gaussian   # 
+msd_num_points=3        # Points to use for MSD fit
