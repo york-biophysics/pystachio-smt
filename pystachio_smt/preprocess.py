@@ -928,7 +928,20 @@ class AnalysisPipeline:
     def run(self):
         print(f"Starting analysis with mask type: {self.args.mask_type}", flush=True)
         
-        # FIX: Try/except block added back around shutil.rmtree to prevent silent wrapper crashes
+        if not self.video_path or self.video_path.strip() == "":
+            if self.bead_path:
+                print("\n" + "="*40, flush=True)
+                print("--- RUNNING IN REGISTRATION-ONLY MODE ---", flush=True)
+                print("="*40, flush=True)
+                
+                self.your_existing_registration_function() # Replace with your actual method name
+                
+                print(f"Registration complete. Matrix saved to: {self.tmats_path}", flush=True)
+                print("Exiting pipeline cleanly.", flush=True)
+                return  
+            else:
+                raise ValueError("CRITICAL: Neither video_path nor bead_path was provided. Nothing to do!")
+        
         if str(self.args.overwrite).lower() in ['true', '1', 't', 'y']:
             if "results" in self.args.save_dir and os.path.exists(self.args.save_dir):
                 try:
@@ -1277,14 +1290,12 @@ class AnalysisPipeline:
 
 def run_preprocessing(params):
     """
-    This is the entry point called by PySTACHIO.
+    Entry point called by PySTACHIO.
     """
     print("\n" + "="*50, flush=True)
     print(f"PREPROCESSING SESSION: {params.name}", flush=True)
     print("="*50, flush=True)
 
-    # Note: PySTACHIO has its own way of printing parameters, 
-    # but we can keep a quick summary here for the preprocessing class
     print(f"Video Path  : {params.video_path}")
     print(f"Model       : {params.model}")
     print(f"ALEX Mode   : {params.ALEX}")
