@@ -182,14 +182,14 @@ default_parameters = {
       'level': 'basic',
       'class': 'simulation',
       'default': None
-        }
+        },
 
     'spherical_volume_radius':
     { 'description': 'Radius in microns of the spherical volume in which to simulate 3D diffusion',
       'level': 'basic',
       'class': 'simulation',
-      'default': 1,
-        }
+      'default': 1.0,
+        },
 
     
     # Tracking parameters

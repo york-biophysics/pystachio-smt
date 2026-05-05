@@ -50,6 +50,14 @@ def main():
             simulation.simulate(params)
             sim=True
 
+        elif task == "simulate_spherical_volume":
+            simulation.simulate_spherical_volume(params)
+            sim=True
+
+        elif task == "simulate_spherical_surface":
+            simulation.simulate_spherical_surface(params)
+            sim=True
+
         elif task == "postprocess":
             postprocessing.postprocess(params, simulated=sim)
 
