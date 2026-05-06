@@ -13,7 +13,7 @@ name=Exp_Cell_01_Analysis
 pixel_size=0.051        # Microns per pixel
 ALEX=False              # Alternating Laser Excitation
 num_frames=0            # 0 to process entire movie
-frame_time=0.0075         # Time per frame in seconds
+frame_time=0.007         # Time per frame in seconds
 
 # --- PREPROCESSING / SEGMENTATION ---
 video_path=./data/raw_video.tif
@@ -35,7 +35,7 @@ tmats_path=./transformation_matrix.npy
 
 # --- TRACKING PARAMETERS ---
 max_displacement=5      # Max pixels a spot can move between frames
-snr_filter_cutoff=0.4   # Signal-to-noise ratio threshold
+snr_filter_cutoff=0.2   # Signal-to-noise ratio threshold
 min_traj_len=2          # Minimum frames for a valid trajectory
 subarray_halfwidth=8    # 
 inner_mask_radius=5     # 
