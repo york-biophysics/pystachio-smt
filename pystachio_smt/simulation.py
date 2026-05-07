@@ -34,8 +34,13 @@ from images import ImageData
 from spots import Spots
 import trajectories
 
-from numpy.random import Generator, PCG64
-rng = Generator(PCG64())
+rng = np.random.default_rng()
+
+def add_noise_to_simulated_frame(frame_data,params):
+    frame_poisson = rng.poisson(frame_data)
+    bg_noise = rng.normal(params.bg_mean, params.bg_std, [params.frame_size[1], params.frame_size[0]])
+    frame_noisy = frame_poisson + np.where(bg_noise > 0, bg_noise.astype(np.uint16), 0)
+    return frame_noisy
 
 def simulate(params):
     if params.num_frames < 1:
@@ -73,7 +78,7 @@ def simulate(params):
         for i in range(params.num_spots):
             if n_mols[i] > 0:
                 for j in range(n_mols[i]):
-                    if random.rand() < params.p_bleach_per_frame:
+                    if rng.random() < params.p_bleach_per_frame:
                         #How far into next frame does this one last?
                         frac = rng.random()
                         n_mols_fractional_intensity[i] += frac
@@ -104,10 +109,8 @@ def simulate(params):
             frame_data += spot_data
             real_spots[frame].spot_intensity[spot]=np.sum(spot_data)
 
-        frame_data = rng.poisson(frame_data)
-        bg_noise = rng.normal(params.bg_mean, params.bg_std, [params.frame_size[1], params.frame_size[0]])
-        frame_data += np.where(bg_noise > 0, bg_noise.astype(np.uint16), 0)
-        image[frame] = frame_data
+        # add noise
+        image[frame] = add_noise_to_simulated_frame(frame_data,params)
 
     real_trajs = trajectories.build_trajectories(real_spots, params)
 
@@ -118,15 +121,26 @@ def simulate(params):
 def simulate_spherical_volume(params):
     if params.psf_name is None:
         if params.pixel_size != 0.05:
-            print("WARNING: Default 3D PSF only works with pixel_size = 50 nm. Changing params.pixel_size to 50 nm")
+            print("Warning: Default 3D PSF only works with pixel_size = 50 nm. Changing params.pixel_size to 50 nm")
             params.pixel_size = 0.050
         params.psf_name = '3d_psf.npy'
     psf = np.load(params.psf_name)
+
+    if params.frame_size[0] % 2 == 0:
+        print('Warning: for these simulations, need an odd frame size. Adding 1 pixel to x axis')
+        params.frame_size[0] += 1
+    if params.frame_size[1] % 2 == 0:
+        print('Warning: for these simulations, need an odd frame size. Adding 1 pixel to y axis')
+        params.frame_size[1] += 1
+    cx = params.frame_size[0]//2
+    cy = params.frame_size[1]//2
+    cz = 100 # z always 201 px
+    
     r = params.spherical_volume_radius
     D = params.diffusion_coeff
     dt = params.frame_time
     sigma = np.sqrt(2*D*dt)
-    output_image = np.zeros((params.num_frames, 101, 101))
+    output_image = np.zeros((params.num_frames, params.frame_size[1], params.frame_size[0]))
     v = np.zeros((params.num_spots,3), dtype='float64')
     for i in range(params.num_spots):
         while True:
@@ -135,7 +149,7 @@ def simulate_spherical_volume(params):
                 v[i,:] = np.copy(tmp_)
                 break
     for i in range(params.num_frames):
-        tmp_im = np.zeros((101,101,101)) # Central spot is 50,50,50, which we will take as the origin
+        tmp_im = np.zeros((201,params.frame_size[1],params.frame_size[0])) # Central spot is 50,50,50, which we will take as the origin
         for particle in range(params.num_spots):
             dv = rng.normal(0,sigma,3)
             tmpv = v[particle,:]
@@ -155,17 +169,18 @@ def simulate_spherical_volume(params):
                     print("ERROR: Didn't find surface!")
                     exit(1)
             v[particle,:] = np.copy(tmpv)
-            xpix = int(v[particle,2]/params.pixel_size) + 50
-            ypix = int(v[particle,1]/params.pixel_size) + 50
-            zpix = int(v[particle,0]/params.pixel_size) + 50
+            xpix = int(v[particle,2]/params.pixel_size) + cx
+            ypix = int(v[particle,1]/params.pixel_size) + cy
+            zpix = int(v[particle,0]/params.pixel_size) + cz
             tmp_im[zpix-psf.shape[0]//2:zpix+psf.shape[0]//2+1,ypix-psf.shape[1]//2:ypix+psf.shape[1]//2+1,xpix-psf.shape[2]//2:xpix+psf.shape[2]//2+1] += psf[:,:,:]
         #Take sum of central slices to produce simulated field of view, assuming a 500 nm depth of field
-        output_image[i,:,:] = np.sum(tmp_im[45:56,:,:], axis=0)
-    tifffile.imwrite(params.name+'.tif', np.array(output_image))
+        output_image[i,:,:] = add_noise_to_simulated_frame(np.sum(tmp_im[cz-5:cz+6,:,:], axis=0),params)
+    tifffile.imwrite(params.name+'.tif', output_image)
     return 0
 
 def simulate_spherical_surface(params):
     from algorithms import rotate_3d_vector
+    from numpy.linalg import norm
     if params.psf_name is None:
         if params.pixel_size != 0.05:
             print("WARNING: Default 3D PSF only works with pixel_size = 50 nm. Changing params.pixel_size to 50 nm")
@@ -178,6 +193,12 @@ def simulate_spherical_surface(params):
     sigma = np.sqrt(2*D*dt)
     output_image = np.zeros((params.num_frames, 101, 101))
     v = np.zeros((params.num_spots,3), dtype='float64')
+
+    for i in range(params.num_spots): # initialise positions
+        tmp_ = rng.normal(3)
+        tmp_ /= norm(tmp_)
+        v[i,:] = np.copy(tmp_*r)
+    
     for i in range(params.num_frames):
         tmp_im = np.zeros((101,101,101)) # Central spot is 50,50,50, which we will take as the origin
         for particle in range(params.num_spots):
@@ -192,5 +213,5 @@ def simulate_spherical_surface(params):
                     break
             r_to_axis = np.linalg.norm(np.cross(v,axis))
             dtheta = dr/r_to_axis
-            v = np.dot(rotation_matrix(axis,dtheta),v)
+            v[particle,:] = np.dot(rotation_matrix(axis,dtheta),v[particle,:])
     return 0
