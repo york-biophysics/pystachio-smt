@@ -209,7 +209,7 @@ def simulate_spherical_surface(params):
     v = np.zeros((params.num_spots,3), dtype='float64')
 
     for i in range(params.num_spots): # initialise positions
-        tmp_ = rng.normal(3)
+        tmp_ = rng.normal(size=3)
         tmp_ /= norm(tmp_)
         v[i,:] = np.copy(tmp_*r)
     
