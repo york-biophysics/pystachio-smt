@@ -596,7 +596,7 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
             xdata = (
                 np.arange(0, params.num_stoic_frames , dtype="float")
                 # * params.frameTime
-            )
+            )            
             ydata = traj.intensity[0: params.num_stoic_frames]
             popt, pcov = curve_fit(straightline, xdata, ydata)
             intercept = popt[1]
@@ -607,6 +607,7 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
             else:
                 continue 
         else:
+            print("WARNING: Unknown stoic_method. Skipping stoichiometry estimation.")
             continue
         stoics.append(traj.stoichiometry)
         ids.append(traj.id)
