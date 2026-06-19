@@ -282,6 +282,11 @@ default_parameters = {
           'class': 'postprocessing',
           'description': 'Number of frames used to determine the stoichiometry',
           'default': 3 },
+    'stoic_trajectory_start_within_n_frames': {
+          'level': 'advanced',
+          'class': 'postprocessing',
+          'description': 'A trajectory must start within n frames of the start of the image acquisition to be used',
+          'default': 3 },
     'calculate_isingle': {
           'level': 'advanced',
           'class': 'postprocessing',

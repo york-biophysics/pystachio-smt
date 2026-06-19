@@ -576,7 +576,7 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
     for traj in trajs:
         if traj.length < params.num_stoic_frames:
             continue
-        if traj.start_frame-startframe > 4:
+        if traj.start_frame-startframe > 1+params.stoic_trajectory_start_within_n_frames:
             continue #stoics.append(traj.intensity[0] / isingle)
         if params.stoic_method == "Initial":
             # Initial intensity
