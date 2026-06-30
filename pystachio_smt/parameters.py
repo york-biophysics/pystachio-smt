@@ -285,8 +285,6 @@ default_parameters = {
         'class' : 'postprocessing',
         'default' : '10000',
         },
-<<<<<<< Updated upstream
-=======
     'isingle_fraction':{
         'level' : 'advanced',
         'class' : 'postprocessing',
@@ -385,7 +383,6 @@ default_parameters = {
           'level': 'advanced',
           'class': 'preprocessing',
           'default': True }
->>>>>>> Stashed changes
 }
 
 
