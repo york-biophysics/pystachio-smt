@@ -29,12 +29,9 @@ import postprocessing
 import simulation
 import tracking
 import trajectories
-<<<<<<< Updated upstream
 import visualisation
 import dash_ui.launcher
-=======
 import preprocess
->>>>>>> Stashed changes
 
 def main():
     params = parameters.Parameters()
