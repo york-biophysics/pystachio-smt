@@ -588,7 +588,8 @@ class AnalysisPipeline:
         Integrated PySTACHIO Initializer.
         This replaces the old argparse-based __init__.
         """
-        self.params = params
+        #self.params = params
+        self.args = params
         
         # --- 1. Map Universal PySTACHIO Params to Internal Names ---
         self.pxsize = params.pixel_size        # mapped from pixel_size

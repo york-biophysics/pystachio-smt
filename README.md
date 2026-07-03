@@ -1,9 +1,3 @@
-<<<<<<< Updated upstream
-# PySTACHIO SMT
-=======
-# PyFRAME 
->>>>>>> Stashed changes
-
 > **WARNING**
 > 
 > This codebase is still under active development and, as such, is not stable.
@@ -16,9 +10,6 @@ PySTACHIO SMT, to a first approximation, a Python port of Adam Wollman's Single
 Molecule Tools[1]. PySTACHIO provides a utility for tracking and analysing
 localisation microscopy data, providing features for spot tracking and spot
 intensity & trajectory analysis.
-=======
-PyFRAME - Python Forcemap Reader And Measuring Elasticity 
->>>>>>> Stashed changes
 
 ## Synopsis
 ```{bash}
