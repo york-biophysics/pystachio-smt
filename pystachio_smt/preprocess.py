@@ -42,7 +42,7 @@ class FileHandler:
     @staticmethod
     def save_parameters(args_dict: dict, save_dir: str):
         os.makedirs(save_dir, exist_ok=True)
-        with open(f'{save_dir}/parameters.txt', 'w') as f:
+        with open(f'{save_dir}/parameters.txt', 'w',encoding="utf-8") as f:
             for k, v in args_dict.items(): 
                 f.write(f"{k}: {v}\n")
 
@@ -313,15 +313,15 @@ class VideoProcessor:
             
             # If they specifically requested 1 channel but it's a split image, just return the requested one
             if int(num_channels) == 1:
-                if channel == "L": return (L_channel, None, end_frame - start_frame, raw_shape)
-                else: return (None, R_channel, end_frame - start_frame, raw_shape)
+                if channel == "L": return (L_channel, None, len(L_channel), raw_shape)
+                else: return (None, R_channel, len(R_channel), raw_shape)
             else:
                 return L_channel, R_channel, end_frame - start_frame, raw_shape
         else:
             # Single camera physical view
             channel_data = frames[:, y1:y2, x1:x2]
-            if channel == "L": return (channel_data, None, end_frame - start_frame, raw_shape)
-            else: return (None, channel_data, end_frame - start_frame, raw_shape)
+            if channel == "L": return (channel_data, None, len(L_channel), raw_shape)
+            else: return (None, channel_data, len(R_channel), raw_shape)
 
 class BeadRegistrar:
     """Handles bead-based spatial registration using the best NCC score."""
@@ -929,20 +929,7 @@ class AnalysisPipeline:
     def run(self):
         print(f"Starting analysis with mask type: {self.args.mask_type}", flush=True)
         
-        if not self.video_path or self.video_path.strip() == "":
-            if self.bead_path:
-                print("\n" + "="*40, flush=True)
-                print("--- RUNNING IN REGISTRATION-ONLY MODE ---", flush=True)
-                print("="*40, flush=True)
-                
-                self.your_existing_registration_function() # Replace with your actual method name
-                
-                print(f"Registration complete. Matrix saved to: {self.tmats_path}", flush=True)
-                print("Exiting pipeline cleanly.", flush=True)
-                return  
-            else:
-                raise ValueError("CRITICAL: Neither video_path nor bead_path was provided. Nothing to do!")
-        
+        # FIX: Try/except block added back around shutil.rmtree to prevent silent wrapper crashes
         if str(self.args.overwrite).lower() in ['true', '1', 't', 'y']:
             if "results" in self.args.save_dir and os.path.exists(self.args.save_dir):
                 try:
@@ -973,7 +960,7 @@ class AnalysisPipeline:
             
         # 1. Video Processing
         L_chan, R_chan, num_frames, raw_shape = VideoProcessor.process_video(
-            self.args.video_path, 0, int(self.args.num_frames), self.args.roi_channel, 
+            self.args.video_path, 0, self.num_frames, self.args.roi_channel, 
             self.args.roi_file, self.args.save_dir, int(self.args.num_channels), 
             self.args.channel, self.args.ALEX
         )
@@ -1041,7 +1028,7 @@ class AnalysisPipeline:
                     # Convert to an 8-bit image (255 for the cell, 0 for background)
                     object_mask = mask_boolean.astype(np.uint8) * 255
                     
-                    # Save the individual cell mask (Optional, can be commented out to save disk space)
+                    # Save the individual cell mask
                     color_string = f"{color[0]}-{color[1]}-{color[2]}"
                     save_path = f'{self.args.save_dir}/object_mask_{color_string}.tif'
                     io.imsave(save_path, object_mask, check_contrast=False)
@@ -1089,7 +1076,6 @@ class AnalysisPipeline:
                     plt.savefig(f"{self.args.save_dir}/predicted.png")
                     plt.show() # Script will pause here until you close the plot window
                 
-                #preds = [self.model.predict(p.reshape(1, p.shape[0], p.shape[1], 1))[0,:,:,0] * 255 for p in patches]
                 mask = ImageProcessor.stitch_patches(preds, img_for_masking.shape, h, w)
                 
             # --- PATH 3: STANDARD PYTORCH ---
@@ -1127,7 +1113,6 @@ class AnalysisPipeline:
         # ==========================================================
         # Dual Mask Generation 
         # ==========================================================
-    
         if int(self.args.num_channels) == 2 and self.args.channel == "L":
             mask_l, mask_r = ImageProcessor.generate_dual_masks(mask, self.args.channel)
         else:
@@ -1137,7 +1122,6 @@ class AnalysisPipeline:
         # ==========================================================
 
         # 4. Region Extraction
-        # If we didn't use Omnipose, generate standard connected-component labels
         if labels is None:
             labels = measure.label(mask > 0)
             
@@ -1176,7 +1160,6 @@ class AnalysisPipeline:
                     extracted_intensities[chan_name] = intensities
                     
                     # 2. Create the ROI-sized 2D average image
-                    # Average the first few frames of the already-ROI-cropped channel
                     chan_avg = np.mean(chan_data[:int(self.args.frame_avg)], axis=0).astype(np.uint16)
                     
                     # Create a copy to apply the mask
@@ -1289,9 +1272,10 @@ class AnalysisPipeline:
 
         print("Analysis pipeline completed successfully.", flush=True)
 
+
 def run_preprocessing(params):
     """
-    Entry point called by PySTACHIO.
+    This is the entry point called by PySTACHIO.
     """
     print("\n" + "="*50, flush=True)
     print(f"PREPROCESSING SESSION: {params.name}", flush=True)
@@ -1303,11 +1287,9 @@ def run_preprocessing(params):
     print("="*50 + "\n", flush=True)
 
     try:
-        # We pass the PySTACHIO params object directly into your class
         pipeline = AnalysisPipeline(params)
         pipeline.run()
         
     except Exception as e:
-        # We keep your traceback logic so you still get detailed error reports
         print(f"\nCRITICAL ERROR DURING PREPROCESSING:\n{traceback.format_exc()}", flush=True)
-        raise e # Re-raise so PySTACHIO knows the task failed
+        raise e

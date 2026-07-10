@@ -292,6 +292,16 @@ default_parameters = {
           'level': 'basic',
           'class': 'preprocessing',
           'default': '' },
+    'channel':
+        { 'description': 'Default channel to use for alignment registration (e.g., L or R)',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': 'L' },
+    'num_channels':
+        { 'description': 'Number of channels in the raw video',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': 1 },
     'bf_path':
         { 'description': 'Path to the brightfield image',
           'level': 'basic',
