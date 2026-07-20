@@ -7,8 +7,13 @@ Created on Wed Nov 19 10:50:31 2025
 
 import numpy as np
 import time, os, sys
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
+
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-from cellpose_omni import io, transforms, plot, models, core
+from cellpose_omni import io, plot, models
 import omnipose
 import skimage.io
 import matplotlib.pyplot as plt
@@ -76,6 +81,7 @@ def main(img_obj, modeldir,save_dir):
     # Transpose to NCHW: (1, 2, H, W)
     patch_nchw = patch.transpose(0, 3, 1, 2)
     input_image = patch_nchw[0] # Get (2, H, W)
+    print("Shape",input_image.shape)
 
     chans = [0,0] 
     
