@@ -125,7 +125,7 @@ default_parameters = {
           'class': 'simulation',
           'default': [100,100] },
     'I_single':
-        { 'description': 'I_single value for simulated spots',
+        { 'description': 'I_single value for simulating or tracking spots',
           'level': 'basic',
           'class': 'simulation',
           'default': 10000.0 },
