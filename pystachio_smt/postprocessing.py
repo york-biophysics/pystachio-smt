@@ -576,7 +576,7 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
     for traj in trajs:
         if traj.length < params.num_stoic_frames:
             continue
-        if traj.start_frame-startframe > 4:
+        if traj.start_frame-startframe > 1+params.stoic_trajectory_start_within_n_frames:
             continue #stoics.append(traj.intensity[0] / isingle)
         if params.stoic_method == "Initial":
             # Initial intensity
@@ -587,11 +587,16 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
             traj.stoichiometry = (
                 np.mean(traj.intensity[: params.num_stoic_frames]) / isingle
                 )
+        elif params.stoic_method == "Max":
+            # Mean of first N frames
+            traj.stoichiometry = (
+                np.amax(traj.intensity[: params.num_stoic_frames]) / isingle
+                )
         elif params.stoic_method == "Linear":
             xdata = (
                 np.arange(0, params.num_stoic_frames , dtype="float")
                 # * params.frameTime
-            )
+            )            
             ydata = traj.intensity[0: params.num_stoic_frames]
             popt, pcov = curve_fit(straightline, xdata, ydata)
             intercept = popt[1]
@@ -602,6 +607,7 @@ def get_stoichiometries(trajs, isingle, params, channel=None):
             else:
                 continue 
         else:
+            print("WARNING: Unknown stoic_method. Skipping stoichiometry estimation.")
             continue
         stoics.append(traj.stoichiometry)
         ids.append(traj.id)
