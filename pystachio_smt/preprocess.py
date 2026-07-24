@@ -16,6 +16,7 @@ import scipy.io as sio
 from skimage import io, measure
 from skimage import transform as ski_transform
 from skimage.util import img_as_float64, img_as_uint
+from skimage.filters import threshold_multiotsu
 from PIL import Image
 from pystackreg import StackReg
 from roifile import ImagejRoi
@@ -212,7 +213,7 @@ class ImageProcessor:
         return stitched_image[:original_shape[0], :original_shape[1]].astype(np.uint8)
 
     @staticmethod
-    def apply_watershed_threshold(img_for_masking, dist_multiplier=0.3):
+    def apply_watershed_threshold(img_for_masking, dist_multiplier=0.3, use_otsu="False"):
         img_float = img_for_masking.astype(np.float32)
         p_low, p_high = np.percentile(img_float, (1.0, 99.5))
         img_clipped = np.clip(img_float, p_low, p_high)
@@ -224,14 +225,27 @@ class ImageProcessor:
         
         blurred = cv2.medianBlur(img_clahe, 5)
         
-        thresh = cv2.adaptiveThreshold(
-            blurred, 255, 
-            cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-            cv2.THRESH_BINARY, 
-            45, 
-            -2  
-        )
+        otsu_str = str(use_otsu).lower()
         
+        if otsu_str == "multi":
+            # Multi-Otsu with 3 classes: Background, Halos/Intermediate, Bright Cells
+            thresholds = threshold_multiotsu(blurred, classes=3)
+            # thresholds[0] separates background from foreground features
+            thresh = (blurred > thresholds[0]).astype(np.uint8) * 255
+            
+        elif otsu_str in ["true", "1", "t", "y"]:
+            # Standard single-threshold Otsu
+            _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            
+        else:
+            # Default Adaptive Gaussian Thresholding
+            thresh = cv2.adaptiveThreshold(
+                blurred, 255, 
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                cv2.THRESH_BINARY, 
+                45, 
+                -2  
+            )
         #_, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
@@ -1096,7 +1110,8 @@ class AnalysisPipeline:
         elif self.args.mask_type == "THRESHOLD":
             mask = ImageProcessor.apply_watershed_threshold(
                 img_for_masking, 
-                dist_multiplier=0.3
+                dist_multiplier=0.3,
+                use_otsu=self.args.use_otsu
             )
             
         elif self.args.mask_type == "WHOLE":
@@ -1188,7 +1203,7 @@ class AnalysisPipeline:
                 'area': obj.area,
                 'centroid': obj.centroid,
                 'bbox': obj.bbox,
-                'cell_mask': cell_mask,
+                'cell_mask': cell_mask.astype(np.float64),
                 'major_axis_length': obj.major_axis_length,
                 'minor_axis_length': obj.minor_axis_length,
                 'eccentricity': obj.eccentricity,
@@ -1248,7 +1263,7 @@ class AnalysisPipeline:
                 'area': all_objects_df['area'].values,
                 'BF': bf_sum if bf_sum is not None else np.zeros((raw_shape[1], raw_shape[2]//2)), 
                 'bf2fl_tform': [0,0],
-                'CellObject': stack_masks,  
+                'CellObject': stack_masks.astype(np.float64),  
                 'p': p
             }
             

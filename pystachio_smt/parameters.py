@@ -378,10 +378,11 @@ default_parameters = {
           'class': 'preprocessing',
           'default': '' },
     'use_otsu':
-        { 'description': 'Use Otsu thresholding instead of model segmentation',
+        { 'description': 'Use Otsu thresholding instead of model segmentation (True, False, or multi)',
           'level': 'advanced',
           'class': 'preprocessing',
-          'default': False },
+          'default': 'False', 
+          'options': ['False', 'True', 'multi'] },
     'overwrite':
         { 'description': 'Overwrite existing output files',
           'level': 'advanced',

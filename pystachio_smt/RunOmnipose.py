@@ -7,6 +7,7 @@ Created on Wed Nov 19 10:50:31 2025
 
 import numpy as np
 import time, os, sys
+import cv2
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
@@ -73,6 +74,7 @@ def main(img_obj, modeldir,save_dir):
     
     # 5. PREPARE IMAGE
     img = img_obj.copy()
+    #img = cv2.GaussianBlur(img, (3, 3), 1.0)
     
     # (H, W) -> (1, H, W, 1) -> (1, H, W, 2)
     patch = np.reshape(img, (1, img.shape[0], img.shape[1], 1))
