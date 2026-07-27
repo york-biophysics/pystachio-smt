@@ -165,6 +165,72 @@ class ImageProcessor:
             return [0, img_height, 0, half_width]
 
     @staticmethod
+    def interactive_manual_mask(img_for_masking):
+        """
+        Interactive polygon drawer for manual cell mask generation.
+        Left-click: Add boundary points around a cell
+        Middle-click: Undo last point
+        Right-click or Enter: Finish current cell polygon
+        Close Window: Save all drawn cells and proceed
+        """
+        print("\n--- MANUAL MASK GENERATION LAUNCHED ---", flush=True)
+        print("1. Left-click points around a cell outline.", flush=True)
+        print("2. Right-click or press Enter when done with that cell.", flush=True)
+        print("3. Repeat for all cells.", flush=True)
+        print("4. Close the plot window when finished.\n", flush=True)
+
+        mask = np.zeros(img_for_masking.shape[:2], dtype=np.uint8)
+        img_disp = cv2.normalize(img_for_masking.astype(float), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+
+        fig, ax = plt.subplots(figsize=(10, 10))
+        plt.ion()
+        
+        cell_count = 0
+
+        while True:
+            ax.clear()
+            ax.imshow(img_disp, cmap='gray')
+            
+            # Draw existing mask as translucent green overlay
+            if np.any(mask > 0):
+                overlay = np.zeros((*mask.shape, 4), dtype=np.float32)
+                overlay[mask > 0] = [0.0, 1.0, 0.0, 0.45] # Green with 45% opacity
+                ax.imshow(overlay)
+
+            ax.set_title(
+                f"Drawn Cells: {cell_count}\n"
+                f"• Left-Click: Add boundary point | Middle-Click: Undo\n"
+                f"• Right-Click / Enter: Complete cell | Close Window: Finish All",
+                fontsize=11
+            )
+            plt.axis('image')
+            fig.canvas.draw()
+
+            # Capture points for one cell polygon
+            # mouse_add=1 (left click), mouse_pop=2 (middle click), mouse_stop=3 (right click)
+            pts = plt.ginput(n=-1, timeout=-1, mouse_add=1, mouse_pop=2, mouse_stop=3)
+
+            # Exit condition: Window closed or empty right-click
+            if not plt.fignum_exists(fig.number):
+                break
+
+            if len(pts) >= 3:
+                pts_array = np.array(pts, dtype=np.int32)
+                cv2.fillPoly(mask, [pts_array], 255)
+                cell_count += 1
+                print(f"Cell #{cell_count} added successfully.", flush=True)
+            elif len(pts) == 0:
+                # Pressing enter or right-clicking without points prompts completion
+                ax.set_title(f"Finished? Close window to confirm {cell_count} cells, or click to continue.")
+                fig.canvas.draw()
+
+        plt.ioff()
+        plt.close('all')
+        print(f"Manual masking completed. Total cells drawn: {cell_count}\n", flush=True)
+        return mask
+
+
+    @staticmethod
     def make_patches(input_image, inv_img):
         # 1. Pad the image with the mean background (like the old script), NOT zeros
         img = input_image.copy().astype(np.float64)
@@ -1004,6 +1070,7 @@ class AnalysisPipeline:
         # Set the image to be used for masking
         if self.args.mask_type == "BF" and self.args.bf_path:
             img_for_masking = bf_cropped 
+            
         elif self.args.mask_type in ["FL_AI", "THRESHOLD", "AI", "WHOLE"]:
             target_chan = L_chan if self.args.channel == "L" else R_chan
             img_for_masking = np.mean(target_chan[:int(self.args.frame_avg)], axis=0).astype(np.uint16)
@@ -1117,7 +1184,9 @@ class AnalysisPipeline:
         elif self.args.mask_type == "WHOLE":
             mask = np.ones_like(img_for_masking, dtype=np.uint8) * 255
             
-        # --- FALLBACK: LOAD FROM FILE ---
+        elif self.args.mask_type == "MANUAL":
+            mask = ImageProcessor.interactive_manual_mask(img_for_masking)
+            
         elif self.args.mask_type == "file":
             mask = io.imread(glob.glob(f"{self.args.save_dir}/{self.args.mask_prefix}*.tif")[0])
             mask = (mask > 0).astype(np.uint8) * 255

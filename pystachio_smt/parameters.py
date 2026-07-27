@@ -338,10 +338,11 @@ default_parameters = {
           'class': 'preprocessing',
           'default': 'unet' },
     'mask_type':
-        { 'description': 'Type of mask to generate',
-          'level': 'advanced',
+        { 'description': 'Method for mask generation (AI, BF, FL_AI, THRESHOLD, WHOLE, MANUAL, or file)',
+          'level': 'basic',
           'class': 'preprocessing',
-          'default': 'cell' },
+          'default': 'WHOLE',
+          'options': ['AI', 'BF', 'FL_AI', 'THRESHOLD', 'WHOLE', 'MANUAL', 'file'] },
     'frame_avg':
         { 'description': 'Number of frames to average for ROI/Mask generation',
           'level': 'basic',
