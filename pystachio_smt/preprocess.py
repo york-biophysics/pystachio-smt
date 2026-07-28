@@ -1429,12 +1429,14 @@ class AnalysisPipeline:
         )
         
         if L_chan is not None:
-            L_avg = np.mean(L_chan[:int(self.args.frame_avg)], axis=0).astype(np.uint16)
+            #L_avg = np.mean(L_chan[:int(self.args.frame_avg)], axis=0).astype(np.uint16)
+            L_avg = np.mean(L_chan[:5], axis=0).astype(np.uint16)
             tifffile.imwrite(f"{self.args.save_dir}/L_avg.tif", L_avg, imagej=True)
             self.save_image_with_scalebar(L_avg, f"{self.args.save_dir}/L_avg.png")
             tifffile.imwrite(f"{self.args.save_dir}/L_channel.tif", L_chan, imagej=True)
         if R_chan is not None:
-            R_avg = np.mean(R_chan[:int(self.args.frame_avg)], axis=0).astype(np.uint16)
+            #R_avg = np.mean(R_chan[:int(self.args.frame_avg)], axis=0).astype(np.uint16)
+            R_avg = np.mean(R_chan[:5], axis=0).astype(np.uint16)
             tifffile.imwrite(f"{self.args.save_dir}/R_avg.tif", R_avg, imagej=True)
             self.save_image_with_scalebar(R_avg, f"{self.args.save_dir}/R_avg.png")
             tifffile.imwrite(f"{self.args.save_dir}/R_channel.tif", R_chan, imagej=True)
