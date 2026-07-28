@@ -361,45 +361,42 @@ class VideoProcessor:
     def process_video(video_path, start_frame, end_frame, roi_channel, roi_file, save_dir, num_channels, channel, ALEX):
         frames = io.imread(video_path)
         
-        # Handle cases where the TIF might load as 2D (single frame)
-        if len(np.shape(frames)) == 2:
+        # Handle 2D single-frame TIFFs
+        if frames.ndim == 2:
             frames = np.expand_dims(frames, axis=0)
             
+        # Slice frames (end_frame can be None for 'all frames')
         frames = frames[start_frame:end_frame]
             
         raw_shape = np.shape(frames)
         height, width = raw_shape[1], raw_shape[2]
+        half_width = width // 2
         
-        # AUTO-DETECT SPLIT CAMERA: Even if the user passes num_channels=1, if it's 2048 wide, WE SPLIT IT.
-        is_split_view = width > 1500
-        half_width = width // 2 if is_split_view else width
-        
+        # Always split view optics
         y1, y2, x1, x2 = ImageProcessor.read_roi(
-            roi_file, roi_channel, channel, height, width, is_split_view
+            roi_file, roi_channel, channel, height, width, is_split_view=True
         )
         
-        if is_split_view:
-            if str(ALEX).lower() == "false":
-                L_full = frames[:, :, :half_width]
-                R_full = frames[:, :, half_width:]
-            else:
-                L_full = frames[::2, :, :half_width]
-                R_full = frames[1::2, :, half_width:]
-                
-            L_channel = L_full[:, y1:y2, x1:x2]
-            R_channel = R_full[:, y1:y2, x1:x2]
-            
-            # If they specifically requested 1 channel but it's a split image, just return the requested one
-            if int(num_channels) == 1:
-                if channel == "L": return (L_channel, None, len(L_channel), raw_shape)
-                else: return (None, R_channel, len(R_channel), raw_shape)
-            else:
-                return L_channel, R_channel, end_frame - start_frame, raw_shape
+        # Extract split halves based on ALEX mode
+        if str(ALEX).lower() == "false":
+            L_full = frames[:, :, :half_width]
+            R_full = frames[:, :, half_width:]
         else:
-            # Single camera physical view
-            channel_data = frames[:, y1:y2, x1:x2]
-            if channel == "L": return (channel_data, None, len(L_channel), raw_shape)
-            else: return (None, channel_data, len(R_channel), raw_shape)
+            L_full = frames[::2, :, :half_width]
+            R_full = frames[1::2, :, half_width:]
+            
+        L_channel = L_full[:, y1:y2, x1:x2]
+        R_channel = R_full[:, y1:y2, x1:x2]
+        
+        # If 1-channel mode, extract only the active side (L or R) and leave the blank side None
+        if int(num_channels) == 1:
+            if channel == "L": 
+                return L_channel, None, len(L_channel), raw_shape
+            else: 
+                return None, R_channel, len(R_channel), raw_shape
+        else:
+            # 2-channel mode: return both active channels
+            return L_channel, R_channel, len(L_channel), raw_shape
 
 class BeadRegistrar:
     """Handles bead-based spatial registration using the best NCC score."""
@@ -1582,7 +1579,9 @@ class AnalysisPipeline:
             
         elif self.args.mask_type == "MANUAL":
             # Pass only the background image; the function will auto-generate the blank mask canvas
-            mask = ImageProcessor.interactive_edit_mask(bg_img=bf_cropped, fl_img=fl_avg)
+            raw_manual_mask = ImageProcessor.interactive_edit_mask(bg_img=bf_cropped, fl_img=fl_avg)
+            # Binarize so all cells have value 255 (or 1) instead of incremental label numbers
+            mask = (raw_manual_mask > 0).astype(np.uint8) * 255
             
         elif self.args.mask_type == "file":
             mask = io.imread(glob.glob(f"{self.args.save_dir}/{self.args.mask_prefix}*.tif")[0])
