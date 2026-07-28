@@ -28,6 +28,10 @@ from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 import matplotlib.font_manager as fm
 import plotly.graph_objects as go
 import plotly.express as px
+import matplotlib.colors as mcolors
+import matplotlib.patches as patches
+from scipy import ndimage as ndi
+from matplotlib.widgets import RadioButtons
 
 class FileHandler:
     """Utility class for managing files and directory structures."""
@@ -165,70 +169,64 @@ class ImageProcessor:
             return [0, img_height, 0, half_width]
 
     @staticmethod
-    def interactive_manual_mask(img_for_masking):
+    def interactive_edit_mask(mask=None, bg_img=None, fl_img=None):
         """
-        Interactive polygon drawer for manual cell mask generation.
-        Left-click: Add boundary points around a cell
-        Middle-click: Undo last point
-        Right-click or Enter: Finish current cell polygon
-        Close Window: Save all drawn cells and proceed
+        Launches full interactive editor to cut, add, delete, and modify masks.
+        Supports both Brightfield (bg_img) and Fluorescence (fl_img) canvases.
         """
-        print("\n--- MANUAL MASK GENERATION LAUNCHED ---", flush=True)
-        print("1. Left-click points around a cell outline.", flush=True)
-        print("2. Right-click or press Enter when done with that cell.", flush=True)
-        print("3. Repeat for all cells.", flush=True)
-        print("4. Close the plot window when finished.\n", flush=True)
-
-        mask = np.zeros(img_for_masking.shape[:2], dtype=np.uint8)
-        img_disp = cv2.normalize(img_for_masking.astype(float), None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-
-        fig, ax = plt.subplots(figsize=(10, 10))
-        plt.ion()
-        
-        cell_count = 0
-
-        while True:
-            ax.clear()
-            ax.imshow(img_disp, cmap='gray')
+        if mask is None:
+            # Fall back to fl_img if bg_img is None, or vice versa
+            ref_img = bg_img if bg_img is not None else fl_img
+            if ref_img is None:
+                raise ValueError("Must provide either a mask, bg_img, or fl_img to determine canvas dimensions.")
+            mask = np.zeros(ref_img.shape[:2], dtype=np.int32)
             
-            # Draw existing mask as translucent green overlay
-            if np.any(mask > 0):
-                overlay = np.zeros((*mask.shape, 4), dtype=np.float32)
-                overlay[mask > 0] = [0.0, 1.0, 0.0, 0.45] # Green with 45% opacity
-                ax.imshow(overlay)
-
-            ax.set_title(
-                f"Drawn Cells: {cell_count}\n"
-                f"• Left-Click: Add boundary point | Middle-Click: Undo\n"
-                f"• Right-Click / Enter: Complete cell | Close Window: Finish All",
-                fontsize=11
-            )
-            plt.axis('image')
-            fig.canvas.draw()
-
-            # Capture points for one cell polygon
-            # mouse_add=1 (left click), mouse_pop=2 (middle click), mouse_stop=3 (right click)
-            pts = plt.ginput(n=-1, timeout=-1, mouse_add=1, mouse_pop=2, mouse_stop=3)
-
-            # Exit condition: Window closed or empty right-click
-            if not plt.fignum_exists(fig.number):
-                break
-
-            if len(pts) >= 3:
-                pts_array = np.array(pts, dtype=np.int32)
-                cv2.fillPoly(mask, [pts_array], 255)
-                cell_count += 1
-                print(f"Cell #{cell_count} added successfully.", flush=True)
-            elif len(pts) == 0:
-                # Pressing enter or right-clicking without points prompts completion
-                ax.set_title(f"Finished? Close window to confirm {cell_count} cells, or click to continue.")
-                fig.canvas.draw()
-
-        plt.ioff()
-        plt.close('all')
-        print(f"Manual masking completed. Total cells drawn: {cell_count}\n", flush=True)
+        editor = MaskEditor(mask=mask, bf_img=bg_img, fl_img=fl_img)
+        return editor.mask
+    
+    @staticmethod
+    def fit_and_generate_cell_shape(points, shape, radius_hint=None):
+        """
+        Fits a 2-pole capsule (spherocylinder) shape to the image ROI 
+        defined by user points and returns a binary mask of shape canvas.
+        """
+        mask = np.zeros(shape, dtype=np.uint8)
+        
+        if len(points) < 2:
+            return mask
+            
+        # Extract endpoints from user clicks/selection
+        p1, p2 = np.array(points[0]), np.array(points[1])
+        
+        # Calculate cell axis, orientation, and default dimensions
+        length = np.linalg.norm(p2 - p1)
+        angle = np.arctan2(p2[1] - p1[1], p2[0] - p1[0])
+        
+        # Use radius_hint if provided, otherwise fall back to length estimate
+        radius = radius_hint if radius_hint is not None else max(3.0, length / 4.0)
+        
+        # Generate coordinate grid
+        y, x = np.ogrid[:shape[0], :shape[1]]
+        
+        # Vector along cell axis
+        dx = x - p1[0]
+        dy = y - p1[1]
+        
+        ux = np.cos(angle)
+        uy = np.sin(angle)
+        
+        # Projection along axis and perpendicular distance
+        proj = dx * ux + dy * uy
+        proj_clamped = np.clip(proj, 0, length)
+        
+        closest_x = p1[0] + proj_clamped * ux
+        closest_y = p1[1] + proj_clamped * uy
+        
+        dist_sq = (x - closest_x)**2 + (y - closest_y)**2
+        
+        # Binary capsule mask
+        mask[dist_sq <= radius**2] = 1
         return mask
-
 
     @staticmethod
     def make_patches(input_image, inv_img):
@@ -661,6 +659,357 @@ class BeadRegistrar:
         
         print(f"\nSaved transformation matrix to {out_npy} and {out_mat}", flush=True)
         return tform.params
+    
+class MaskEditor:
+    """
+    Interactive Mask Editor featuring:
+    - Click-and-drag red box: Delete all cell masks touched by box
+    - Click points + 'c': Cut/split a single mask along drawn path
+    - Click 2 points + 'a': Add new 'sausage' mask (width controlled by [ and ])
+    - Click 3+ points + 'a': Add new custom polygon mask
+    - Click 2 points (poles) + 'f': Fit exact mathematical capsule (width controlled by [ and ])
+    - Click points + 'r': Reject/delete selected cell masks
+    - 'z': Undo last change | 'x': Clear current path points | 'd': Done/Save
+    """
+    def __init__(self, mask, bf_img=None, fl_img=None, sausage_width=16, alpha=0.4, outline_alpha=0.7):
+        conflicting_keys = ['f', 'c', 'r', 'z', 'a', 'x', 'd', '+', '-', '=']
+        for param in plt.rcParams:
+            if param.startswith('keymap.'):
+                for key in conflicting_keys:
+                    if key in plt.rcParams[param]:
+                        plt.rcParams[param].remove(key)
+        
+        if mask.ndim == 3:
+            collapsed = np.zeros(mask.shape[1:], dtype=np.int32)
+            for idx in range(mask.shape[0]):
+                collapsed[mask[idx] > 0] = idx + 1
+            self.mask = collapsed
+        else:
+            self.mask = mask.copy().astype(np.int32)
+
+        # --- STORE IMAGES IN A DICTIONARY ---
+        self.image_dict = {}
+        if bf_img is not None: self.image_dict["Brightfield"] = bf_img
+        if fl_img is not None: self.image_dict["Fluorescence"] = fl_img
+        self.current_img_key = list(self.image_dict.keys())[0] if self.image_dict else "None"
+        # ------------------------------------
+
+        self.history = []
+        self.current_points = []
+        self.sausage_width = sausage_width
+        self.alpha = alpha
+        self.outline_alpha = outline_alpha
+
+        self.press_pos = None
+        self.is_dragging = False
+        self.rect_patch = None
+
+        self.fig, (self.ax_ref, self.ax) = plt.subplots(1, 2, figsize=(14, 7), sharex=True, sharey=True)
+        
+        # --- ADD IMAGE SELECTION MENU WIDGET ---
+        if len(self.image_dict) > 1:
+            # Positioned at [left, bottom, width, height] in normalized figure coordinates
+            self.ax_menu = plt.axes([0.84, 0.88, 0.14, 0.09], facecolor='lightgray')
+            self.img_selector = RadioButtons(self.ax_menu, list(self.image_dict.keys()), active=0)
+            self.img_selector.on_clicked(self.on_switch_image)
+        # ---------------------------------------
+
+        try:
+            if hasattr(self.fig.canvas, "manager") and self.fig.canvas.manager is not None:
+                self.fig.canvas.manager.set_window_title("Interactive Mask Editor")
+        except Exception:
+            pass
+
+        self._redraw()
+
+        self.fig.canvas.mpl_connect("button_press_event", self.on_press)
+        self.fig.canvas.mpl_connect("motion_notify_event", self.on_motion)
+        self.fig.canvas.mpl_connect("button_release_event", self.on_release)
+        self.fig.canvas.mpl_connect("key_press_event", self.on_key)
+
+        plt.show()
+
+    # --- NEW CALLBACK FOR WIDGET SWITCHING ---
+    def on_switch_image(self, label):
+        self.current_img_key = label
+        self._redraw()  # Re-renders canvas while preserving self.mask and self.current_points
+    # -----------------------------------------
+
+    def _draw_base(self):
+        self.ax_ref.clear()
+        self.ax.clear()
+
+        # --- RETRIEVE CURRENT ACTIVE IMAGE ---
+        current_img = self.image_dict.get(self.current_img_key, None)
+
+        if current_img is not None:
+            cmap = "gray" if current_img.ndim == 2 else None
+            self.ax_ref.imshow(current_img, cmap=cmap)
+            self.ax.imshow(current_img, cmap=cmap)
+        self.ax_ref.set_title(f"Reference Channel ({self.current_img_key})", fontsize=9)
+        # -------------------------------------
+
+        max_label = int(self.mask.max()) if self.mask.size else 0
+        rng = np.random.RandomState(42)
+        colors = rng.rand(max(max_label, 1) + 1, 3)
+        colors[0] = [0, 0, 0] 
+        cmap = mcolors.ListedColormap(colors)
+        masked = np.ma.masked_where(self.mask == 0, self.mask)
+
+        current_alpha = self.alpha if current_img is not None else 1.0
+        self.ax.imshow(masked, cmap=cmap, interpolation="nearest", vmin=0, vmax=max(max_label, 1), alpha=current_alpha)
+
+        if max_label > 0:
+            self.ax.contour(self.mask > 0, levels=[0.5], colors=["white"], linewidths=0.5, alpha=self.outline_alpha)
+
+        self.ax_ref.set_xticks([]); self.ax_ref.set_yticks([])
+        self.ax.set_xticks([]); self.ax.set_yticks([])
+
+    def _set_title(self):
+        self.fig.suptitle(
+            f"Box Drag: Delete | C: Cut | A: Add | F: Fit 2-Pole Capsule | "
+            f"Width: {self.sausage_width}px (+/- to adjust) | R: Reject | Z: Undo | D: Done", 
+            fontsize=9
+        )
+        self.fig.canvas.draw_idle()
+
+    def _redraw(self):
+        self._draw_base()
+        self.line_artist, = self.ax.plot([], [], "w-", linewidth=1.5)
+        self.point_artist, = self.ax.plot([], [], "wo", markersize=4)
+        self._refresh_line()
+        self._set_title()
+
+    def _refresh_line(self):
+        if self.current_points:
+            xs, ys = zip(*self.current_points)
+        else:
+            xs, ys = [], []
+        self.line_artist.set_data(xs, ys)
+        self.point_artist.set_data(xs, ys)
+        self.fig.canvas.draw_idle()
+
+    def on_press(self, event):
+        if event.inaxes != self.ax or event.button != 1: return
+        if event.xdata is None or event.ydata is None: return
+        self.press_pos = (event.xdata, event.ydata)
+        self.is_dragging = False
+
+    def on_motion(self, event):
+        if self.press_pos is None or event.inaxes != self.ax: return
+        if event.xdata is None or event.ydata is None: return
+
+        x0, y0 = self.press_pos
+        x1, y1 = event.xdata, event.ydata
+
+        if abs(x1 - x0) > 3 or abs(y1 - y0) > 3:
+            self.is_dragging = True
+            xmin, xmax = min(x0, x1), max(x0, x1)
+            ymin, ymax = min(y0, y1), max(y0, y1)
+
+            if self.rect_patch is not None:
+                self.rect_patch.remove()
+
+            self.rect_patch = patches.Rectangle(
+                (xmin, ymin), xmax - xmin, ymax - ymin,
+                linewidth=1.5, edgecolor="red", facecolor="red", alpha=0.3, linestyle="--"
+            )
+            self.ax.add_patch(self.rect_patch)
+            self.fig.canvas.draw_idle()
+
+    def on_release(self, event):
+        if self.press_pos is None: return
+
+        if self.rect_patch is not None:
+            self.rect_patch.remove()
+            self.rect_patch = None
+
+        if self.is_dragging and event.xdata is not None and event.ydata is not None:
+            x0, y0 = self.press_pos
+            x1, y1 = event.xdata, event.ydata
+
+            h, w = self.mask.shape
+            xmin, xmax = max(0, int(round(min(x0, x1)))), min(w, int(round(max(x0, x1))))
+            ymin, ymax = max(0, int(round(min(y0, y1)))), min(h, int(round(max(y0, y1))))
+
+            sub_region = self.mask[ymin:ymax+1, xmin:xmax+1]
+            labels_to_delete = set(np.unique(sub_region)) - {0}
+
+            if labels_to_delete:
+                self._save_history()
+                for label_id in labels_to_delete:
+                    self.mask[self.mask == label_id] = 0
+                print(f"Box drag deleted {len(labels_to_delete)} mask(s): {sorted(list(labels_to_delete))}")
+                self._redraw()
+        elif not self.is_dragging:
+            self.current_points.append(self.press_pos)
+            self._refresh_line()
+
+        self.press_pos = None
+        self.is_dragging = False
+
+    def on_key(self, event):
+        if event.key == "c": self.commit_cut()
+        elif event.key == "a": self.add_new_mask()
+        elif event.key == "f": self.fit_and_add_cell_shape()
+        elif event.key == "r": self.reject_selected_masks()
+        elif event.key == "z": self.undo()
+        elif event.key == "x":
+            self.current_points = []
+            self._refresh_line()
+        elif event.key in ["-", "_"]:
+            self.sausage_width = max(2, self.sausage_width - 2)
+            self._set_title()
+        elif event.key in ["+", "="]:
+            self.sausage_width += 2
+            self._set_title()
+        elif event.key == "d":
+            plt.close(self.fig)
+
+    def _save_history(self):
+        self.history.append(self.mask.copy())
+        if len(self.history) > 15:
+            self.history.pop(0)
+
+    def commit_cut(self):
+        if len(self.current_points) < 2:
+            print("Click at least 2 points across the mask, then press 'c'.")
+            return
+
+        pts = np.array(self.current_points)
+        line_canvas = np.zeros(self.mask.shape, dtype=np.uint8)
+        for (x1, y1), (x2, y2) in zip(pts[:-1], pts[1:]):
+            cv2.line(line_canvas, (int(round(x1)), int(round(y1))), (int(round(x2)), int(round(y2))), color=1, thickness=2)
+
+        # Find all mask IDs that the drawn line intersects (ignoring background 0)
+        intersecting_labels = set(np.unique(self.mask[line_canvas == 1])) - {0}
+
+        if not intersecting_labels:
+            print("Cut line did not intersect any cell masks. Draw the line across the cell you want to cut.")
+            return
+
+        self._save_history()
+        cuts_performed = 0
+        max_label = int(self.mask.max())
+
+        for label_id in intersecting_labels:
+            region = (self.mask == label_id)
+            cut_region = region & (line_canvas == 0)
+            pieces, n_pieces = ndi.label(cut_region, structure=np.ones((3, 3)))
+
+            if n_pieces > 1:
+                self.mask[region] = 0
+                for piece_id in range(1, n_pieces + 1):
+                    max_label += 1
+                    self.mask[pieces == piece_id] = max_label
+                cuts_performed += 1
+                print(f"Mask {label_id} successfully split into {n_pieces} segments.")
+            else:
+                print(f"Line touched mask {label_id} but did not completely divide it into 2+ pieces.")
+
+        if cuts_performed > 0:
+            self.current_points = []
+            self._redraw()
+        else:
+            # Revert history if a division wasn't achieved
+            if self.history:
+                self.history.pop()
+            
+    def add_new_mask(self):
+        if len(self.current_points) == 2:
+            p1, p2 = self.current_points
+            canvas = np.zeros(self.mask.shape, dtype=np.uint8)
+            x1, y1, x2, y2 = int(round(p1[0])), int(round(p1[1])), int(round(p2[0])), int(round(p2[1]))
+            rad = max(1, int(round(self.sausage_width / 2)))
+            cv2.line(canvas, (x1, y1), (x2, y2), color=1, thickness=self.sausage_width)
+            cv2.circle(canvas, (x1, y1), rad, color=1, thickness=-1)
+            cv2.circle(canvas, (x2, y2), rad, color=1, thickness=-1)
+            new_shape = canvas.astype(bool)
+        elif len(self.current_points) >= 3:
+            pts = np.round(np.array(self.current_points)).astype(np.int32)
+            canvas = np.zeros(self.mask.shape, dtype=np.uint8)
+            cv2.fillPoly(canvas, [pts], color=1)
+            new_shape = canvas.astype(bool)
+        else:
+            print("Click 2 points for sausage or 3+ points for polygon, then press 'a'.")
+            return
+
+        # ENFORCE 1-PIXEL GAP: Dilate existing masks so the new addition cannot touch them
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        forbidden_zone = cv2.dilate((self.mask > 0).astype(np.uint8), kernel, iterations=1)
+        new_region = new_shape & (forbidden_zone == 0)
+        
+        if not np.any(new_region): return
+
+        self._save_history()
+        new_label = int(self.mask.max()) + 1
+        self.mask[new_region] = new_label
+
+        self.current_points = []
+        self._redraw()
+        print(f"Added new mask with label {new_label}.")
+
+    def fit_and_add_cell_shape(self):
+        """
+        Takes 2 clicked pole points (or 3+ perimeter points), computes the exact capsule shape, 
+        and adds it with a guaranteed 1-pixel background separation from existing masks.
+        """
+        if len(self.current_points) < 2:
+            print("Click 2 points (one at each pole) or 3+ perimeter points, then press 'f'.")
+            return
+            
+        # --- THE FIX: Pass None for 'img' and pass self.current_points directly! ---
+        new_shape = ImageProcessor.fit_and_generate_cell_shape(
+            None, self.current_points, self.mask.shape
+        )
+        # ---------------------------------------------------------------------------
+        
+        # ENFORCE 1-PIXEL GAP: Dilate existing masks so the fitted cell cannot touch them
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        forbidden_zone = cv2.dilate((self.mask > 0).astype(np.uint8), kernel, iterations=1)
+        new_region = new_shape & (forbidden_zone == 0)
+        
+        if not np.any(new_region):
+            print("Fitted cell shape overlapped completely with existing masks or background.")
+            return
+            
+        self._save_history()
+        new_label = int(self.mask.max()) + 1
+        self.mask[new_region] = new_label
+        
+        self.current_points = []
+        self._redraw()
+        print(f"Added fitted mathematical cell shape with label {new_label}.")
+
+    def reject_selected_masks(self):
+        if not self.current_points: return
+        h, w = self.mask.shape
+        labels_to_reject = set()
+
+        for pt in self.current_points:
+            r, c = int(round(pt[1])), int(round(pt[0]))
+            if 0 <= r < h and 0 <= c < w:
+                lbl = self.mask[r, c]
+                if lbl != 0: labels_to_reject.add(lbl)
+
+        if not labels_to_reject: return
+
+        self._save_history()
+        for lbl in labels_to_reject:
+            self.mask[self.mask == lbl] = 0
+
+        self.current_points = []
+        self._redraw()
+        print(f"Rejected {len(labels_to_reject)} mask(s).")
+
+    def undo(self):
+        if not self.history:
+            print("Nothing to undo.")
+            return
+        self.mask = self.history.pop()
+        self.current_points = []
+        self._redraw()
+        print("Undid last action.")
 
 class AnalysisPipeline:
     def __init__(self, params):
@@ -1067,9 +1416,19 @@ class AnalysisPipeline:
         
         bf_sum, bf_cropped = self.process_brightfield(raw_shape, sr, tmats)
         
+        target_chan = L_chan if self.args.channel == "L" else R_chan
+        fl_avg = None
+        if target_chan is not None:
+            fl_avg = np.mean(target_chan[:int(self.args.frame_avg)], axis=0).astype(np.uint16)
+        
         # Set the image to be used for masking
-        if self.args.mask_type == "BF" and self.args.bf_path:
-            img_for_masking = bf_cropped 
+        if self.args.mask_type == "BF" and self.args.bf_path and bf_cropped is not None:
+            img_for_masking = bf_cropped
+            
+        elif self.args.mask_type == "MANUAL":
+            # Pass both brightfield and fluorescence images to populate the switcher menu
+            target_chan = L_chan if self.args.channel == "L" else R_chan
+            mask = ImageProcessor.interactive_edit_mask(bg_img=bf_cropped, fl_img=fl_avg)
             
         elif self.args.mask_type in ["FL_AI", "THRESHOLD", "AI", "WHOLE"]:
             target_chan = L_chan if self.args.channel == "L" else R_chan
@@ -1185,7 +1544,8 @@ class AnalysisPipeline:
             mask = np.ones_like(img_for_masking, dtype=np.uint8) * 255
             
         elif self.args.mask_type == "MANUAL":
-            mask = ImageProcessor.interactive_manual_mask(img_for_masking)
+            # Pass only the background image; the function will auto-generate the blank mask canvas
+            mask = ImageProcessor.interactive_edit_mask(bg_img=bf_cropped, fl_img=fl_avg)
             
         elif self.args.mask_type == "file":
             mask = io.imread(glob.glob(f"{self.args.save_dir}/{self.args.mask_prefix}*.tif")[0])
