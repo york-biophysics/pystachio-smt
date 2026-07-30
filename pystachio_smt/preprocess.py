@@ -3,7 +3,7 @@ import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 from keras.models import load_model
 import tensorflow as tf
-import torch
+#import torch
 import glob
 import shutil
 import argparse
@@ -1112,6 +1112,7 @@ class AnalysisPipeline:
                 
             elif params.model_type == "pytorch":
                 print("Loading standard PyTorch model...", flush=True)
+                import torch
                 self.model = torch.load(params.model, map_location=torch.device('cpu'))
                 self.model.eval() 
 
