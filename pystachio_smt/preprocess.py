@@ -32,6 +32,7 @@ import matplotlib.colors as mcolors
 import matplotlib.patches as patches
 from scipy import ndimage as ndi
 from matplotlib.widgets import RadioButtons
+from keras import backend as K
 
 class FileHandler:
     """Utility class for managing files and directory structures."""
@@ -60,6 +61,23 @@ class MathUtils:
     def exp_3(x, A, k, A1, k1, A2, k2, c): return A * np.exp(-k * x) + A1 * np.exp(-1 * (k1) * x) + A2 * np.exp(-1 * (k2) * x) + c
     @staticmethod
     def chisq(ydata, ymodel, err): return np.sum((np.asarray(ydata) - np.asarray(ymodel))**2 / err)
+    @staticmethod
+    def dice_loss(y_true, y_pred, smooth=1e-6):
+        """
+        Computes the Dice loss between the true masks and predicted masks.
+        """
+        # Flatten the tensors
+        y_true_f = K.flatten(tf.cast(y_true, tf.float32))
+        y_pred_f = K.flatten(y_pred)
+        
+        # Calculate intersection
+        intersection = K.sum(y_true_f * y_pred_f)
+        
+        # Calculate the Dice coefficient
+        dice_coef = (2. * intersection + smooth) / (K.sum(y_true_f) + K.sum(y_pred_f) + smooth)
+        
+        # Return loss (1 - coefficient)
+        return 1.0 - dice_coef
 
 class IntensityAnalyzer:
     """Handles plotting of intensity traces and fitting to exponential decay models."""
@@ -1220,76 +1238,102 @@ class AnalysisPipeline:
         contours = measure.find_contours(cell_mask, 0.5)
         if not contours: return None, None, None
         contour = max(contours, key=len)
+        
+        # 1. PCA for initial geometric parameters (center, angle, length, radius)
         y_data, x_data = contour.T
-        
-        initial_R = (np.max(y_data) - np.min(y_data)) / 2.0
-        initial_L = max(0.1, (np.max(x_data) - np.min(x_data)) - 2.0 * initial_R)
-        initial_xc, initial_yc = np.mean(x_data), np.mean(y_data)
-        
-        def residuals_rotated(params, x_data, y_data):
-            R, L, xc, yc, theta = params
-            if R <= 0 or L < 0: return 1e9 * np.ones_like(x_data)
-            x_rot = (x_data - xc) * np.cos(-theta) - (y_data - yc) * np.sin(-theta) + xc
-            y_rot = (x_data - xc) * np.sin(-theta) + (y_data - yc) * np.cos(-theta) + yc
-            
-            x_start, x_end = -L / 2, L / 2
-            y_model = np.full_like(x_rot, np.nan, dtype=float)
-            x_shifted = x_rot - xc
-            is_straight = (x_shifted >= x_start) & (x_shifted <= x_end)
-            y_model[is_straight] = R
-            is_left = (x_shifted < x_start)
-            y_model[is_left] = np.sqrt(np.maximum(0, R**2 - (x_shifted[is_left] - x_start)**2))
-            is_right = (x_shifted > x_end)
-            y_model[is_right] = np.sqrt(np.maximum(0, R**2 - (x_shifted[is_right] - x_end)**2))
-            
-            res_top = (y_rot - yc) - y_model
-            res_bottom = (y_rot - yc) - (-y_model)
-            return np.where(np.abs(res_top) < np.abs(res_bottom), res_top, res_bottom)
+        pts = np.vstack([x_data, y_data]).T
+        mean = np.mean(pts, axis=0)
 
+        cov = np.cov(pts, rowvar=False)
+        evals, evecs = np.linalg.eigh(cov)
+
+        # Sort eigenvectors by eigenvalue (major axis first)
+        idx = np.argsort(evals)[::-1]
+        evecs = evecs[:, idx]
+
+        # Orientation along principal axis
+        initial_theta = np.arctan2(evecs[1, 0], evecs[0, 0])
+
+        # Initial length and width span
+        centered = pts - mean
+        proj_major = centered @ evecs[:, 0]
+        proj_minor = centered @ evecs[:, 1]
+
+        major_span = np.max(proj_major) - np.min(proj_major)
+        minor_span = np.max(proj_minor) - np.min(proj_minor)
+
+        initial_R = max(1.0, minor_span / 2.0)
+        initial_L = max(0.1, major_span - 2.0 * initial_R)
+        initial_xc, initial_yc = mean[0], mean[1]
+        
+        max_R = max(initial_R * 3.0, 50.0)
+        max_L = max(initial_L * 3.0, 200.0)
+        
+        lower_bounds = [0.1, 0.0, -np.inf, -np.inf, -np.pi]
+        upper_bounds = [max_R, max_L, np.inf, np.inf, np.pi]
+        
+        # 2. Euclidean distance to central line segment: dist(point, segment) - R
+        def residuals_capsule(params, x_data, y_data):
+            R, L, xc, yc, theta = params
+            
+            dx = x_data - xc
+            dy = y_data - yc
+            
+            cos_t = np.cos(theta)
+            sin_t = np.sin(theta)
+            
+            # Transform contour points into local rotated capsule coordinates
+            x_local = dx * cos_t + dy * sin_t
+            y_local = -dx * sin_t + dy * cos_t
+            
+            # Perpendicular Euclidean distance to line segment [-L/2, L/2] along x-axis
+            x_clamped = np.clip(x_local, -L / 2.0, L / 2.0)
+            dist_to_segment = np.sqrt((x_local - x_clamped)**2 + y_local**2)
+            
+            # Residual is signed distance to capsule boundary (radius R)
+            return dist_to_segment - R
+
+        # 3. Fit using least_squares with PCA estimates as p0 (including initial_theta)
+        p0 = [initial_R, initial_L, initial_xc, initial_yc, initial_theta]
         res = optimize.least_squares(
-            residuals_rotated, [initial_R, initial_L, initial_xc, initial_yc, 0.0], 
-            args=(x_data, y_data), bounds=([0.001, 0, -np.inf, -np.inf, -np.pi], [np.inf, np.inf, np.inf, np.inf, np.pi])
+            residuals_capsule, p0, 
+            args=(x_data, y_data), bounds=(lower_bounds, upper_bounds)
         )
         R_fit, L_fit, xc_fit, yc_fit, theta_fit = res.x
-        fit_error = np.sqrt(np.sum(res.fun**2)) / len(x_data)
+        fit_error = np.sqrt(np.mean(res.fun**2))
         
-        # --- UNIT CORRECTION BUGFIX ---
-        # Auto-detects if pxsize is in meters (51e-9) or microns (0.051)
+        # Unit conversion
         scale_factor = 1e9 if self.pxsize < 1e-4 else 1000
         
-        cell_length = (2*R_fit + L_fit) * self.pxsize * scale_factor
-        cell_width = 2*R_fit * self.pxsize * scale_factor
+        cell_length = (2 * R_fit + L_fit) * self.pxsize * scale_factor
+        cell_width = 2 * R_fit * self.pxsize * scale_factor
         error_nm = fit_error * self.pxsize * scale_factor
 
         print(f"\n--- Optimal Fit for cell {obj_num} ---", flush=True)
         print(rf"Radius (R): {R_fit:.2f} px, Length (L): {L_fit:.2f} px, Angle: {np.rad2deg(theta_fit):.1f}°", flush=True)
         print(f"Residual Error: {fit_error:.3f} px", flush=True)
         
+        # 4. Generate fitted capsule outline for visualization & HTML overlay
         plt.figure(figsize=(8, 6))
         plt.imshow(cell_mask, cmap='binary', alpha=0.5)
         plt.plot(x_data, y_data, 'b.', markersize=2, alpha=0.5, label='Mask Contour')
 
-        x_model_unrot = np.linspace(-L_fit/2 - R_fit, L_fit/2 + R_fit, 500)
+        t_cap = np.linspace(-np.pi/2, np.pi/2, 100)
+        # Right cap semicircle
+        x_right_cap = L_fit/2 + R_fit * np.cos(t_cap)
+        y_right_cap = R_fit * np.sin(t_cap)
+        # Left cap semicircle
+        x_left_cap = -L_fit/2 - R_fit * np.cos(t_cap)
+        y_left_cap = -R_fit * np.sin(t_cap)
         
-        def unrot_y(x, R, L, top):
-            y = np.full_like(x, np.nan, float)
-            y[(x >= -L/2) & (x <= L/2)] = R if top else -R
-            y[x < -L/2] = np.sqrt(np.maximum(0, R**2 - (x[x < -L/2] - (-L/2))**2)) * (1 if top else -1)
-            y[x > L/2] = np.sqrt(np.maximum(0, R**2 - (x[x > L/2] - L/2)**2)) * (1 if top else -1)
-            return y
-            
-        y_top = unrot_y(x_model_unrot, R_fit, L_fit, True)
-        y_bot = unrot_y(x_model_unrot, R_fit, L_fit, False)
-        
-        x_m = np.concatenate([x_model_unrot, x_model_unrot[::-1]])
-        y_m = np.concatenate([y_top, y_bot[::-1]])
+        x_m = np.concatenate([x_right_cap, x_left_cap, [x_right_cap[0]]])
+        y_m = np.concatenate([y_right_cap, y_left_cap, [y_right_cap[0]]])
 
         x_fitted = xc_fit + x_m * np.cos(theta_fit) - y_m * np.sin(theta_fit)
         y_fitted = yc_fit + x_m * np.sin(theta_fit) + y_m * np.cos(theta_fit)
 
         plt.plot(x_fitted, y_fitted, 'r-', linewidth=2, label='Fitted Outline')
         
-        # --- RESTORED TITLE PARAMETERS ---
         title_text = (
             f'Fitted Cell Outline {obj_num}\n'
             rf'Length={cell_length:.2f} nm, Width={cell_width:.2f} nm, '
@@ -1303,7 +1347,6 @@ class AnalysisPipeline:
         plt.savefig(f"{save_dir}/cell_mask_{obj_num}_{channel}_fitted.png")
         plt.close()
 
-        # RETURN PARAMETERS FOR CSV SAVING & COORDS FOR HTML
         fit_params = {
             'Cell_Number': obj_num,
             'Channel': channel,
@@ -1317,14 +1360,45 @@ class AnalysisPipeline:
         return fit_params, x_fitted, y_fitted
     
     
-    def create_interactive_html(self, img, objects, fit_results_list, fit_outlines_dict, save_dir):
-        print("Generating interactive HTML overlay with fits...", flush=True)
-        img_norm = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-        fig = px.imshow(img_norm, color_continuous_scale='gray')
-        area_thresh = int(self.args.area_filter)
+    def create_interactive_html(self, images_dict, objects, fit_results_list, fit_outlines_dict, save_dir):
+        """
+        Generates an interactive Plotly HTML overlay containing:
+        - Toggleable background layers (Brightfield, Channel L, Channel R)
+        - Interactive Cell contours with hover info
+        - Mathematical capsule fit overlays
+        """
+        print("Generating interactive multi-channel HTML overlay with fits...", flush=True)
         
-        # Create a fast lookup dictionary for the fit parameters
+        # 1. Normalize and validate input channel images
+        valid_images = {}
+        for name, img_data in images_dict.items():
+            if img_data is not None:
+                norm_img = cv2.normalize(img_data, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+                valid_images[name] = norm_img
+
+        if not valid_images:
+            print("No valid images provided for HTML generation.", flush=True)
+            return
+
+        fig = go.Figure()
+        image_keys = list(valid_images.keys())
+        num_img_traces = len(image_keys)
+
+        # 2. Add background image traces for each channel
+        for idx, (img_name, norm_img) in enumerate(valid_images.items()):
+            # Convert 2D grayscale array to 3D RGB for Plotly rendering
+            rgb_img = np.dstack([norm_img, norm_img, norm_img]) if norm_img.ndim == 2 else norm_img
+            
+            fig.add_trace(go.Image(
+                z=rgb_img,
+                name=img_name,
+                visible=(idx == 0),  # Only the first channel is visible initially
+                hoverinfo='skip'
+            ))
+
+        # 3. Add Cell Masks and Mathematical Fits
         fit_dict = {f['Cell_Number']: f for f in fit_results_list}
+        area_thresh = int(self.args.area_filter)
 
         for obj in objects:
             status = "Accepted" if obj.area > area_thresh else "Rejected"
@@ -1334,11 +1408,10 @@ class AnalysisPipeline:
             if obj.image.shape[0] < 2 or obj.image.shape[1] < 2:
                 continue
 
-            # Grab fit data if it exists for this cell
             fit_data = fit_dict.get(obj_num)
             fit_outline = fit_outlines_dict.get(obj_num)
 
-            # Build the text box
+            # Build rich hover tooltip
             hover_text = (
                 f"<b>Object {obj_num}</b><br>"
                 f"Status: {status}<br>"
@@ -1351,7 +1424,7 @@ class AnalysisPipeline:
                     f"Error: {fit_data['Error_nm']} nm"
                 )
 
-            # Draw the real mask
+            # Draw real cell segmentation boundary
             min_y, min_x, max_y, max_x = obj.bbox
             padded_image = np.pad(obj.image, pad_width=1, mode='constant', constant_values=0)
             contours = measure.find_contours(padded_image, 0.5)
@@ -1362,32 +1435,61 @@ class AnalysisPipeline:
 
                 fig.add_trace(go.Scatter(
                     x=global_x, y=global_y, mode='lines', fill='toself', fillcolor=color,
-                    line=dict(color=color if color else None, width=1.5),
-                    name=f"Cell {obj_num}", text=hover_text, hoverinfo="text", showlegend=False
+                    line=dict(color=color if color else 'yellow', width=1.5),
+                    name=f"Cell {obj_num}", text=hover_text, hoverinfo="text", showlegend=False,
+                    visible=True
                 ))
 
-            # Draw the mathematical fit as a dashed cyan line
+            # Draw fitted capsule shape
             if fit_outline and status == "Accepted":
                 x_fit, y_fit = fit_outline
-                global_fit_x = x_fit
-                global_fit_y = y_fit
-                
                 fig.add_trace(go.Scatter(
-                    x=global_fit_x, y=global_fit_y, mode='lines',
+                    x=x_fit, y=y_fit, mode='lines',
                     line=dict(color='cyan', width=2, dash='dot'),
-                    name=f"Fit {obj_num}", hoverinfo='skip', showlegend=False
+                    name=f"Fit {obj_num}", hoverinfo='skip', showlegend=False,
+                    visible=True
                 ))
 
+        total_traces = len(fig.data)
+
+        # 4. Construct Dropdown Buttons to switch active channel background
+        buttons = []
+        for idx, name in enumerate(image_keys):
+            # Visibility mask: set trace `idx` to True, other image traces to False, and keep all contour/fit traces True
+            vis_state = [False] * num_img_traces + [True] * (total_traces - num_img_traces)
+            vis_state[idx] = True
+            
+            buttons.append(dict(
+                label=f"Channel: {name}",
+                method="update",
+                args=[{"visible": vis_state},
+                      {"title": f"Interactive Cell Overlay | Viewing: {name}"}]
+            ))
+
+        # 5. Apply layout settings
         fig.update_layout(
-            title=f"Interactive Cell Mask Overlay | Area Threshold: {area_thresh}",
-            margin=dict(l=0, r=0, b=0, t=40), coloraxis_showscale=False,
+            title=f"Interactive Cell Mask Overlay | Viewing: {image_keys[0]}",
+            updatemenus=[dict(
+                active=0,
+                buttons=buttons,
+                direction="down",
+                pad={"r": 10, "t": 10},
+                showactive=True,
+                x=0.01,
+                xanchor="left",
+                y=1.15,
+                yanchor="top",
+                bgcolor="rgba(255, 255, 255, 0.9)"
+            )],
+            margin=dict(l=0, r=0, b=0, t=60),
+            coloraxis_showscale=False,
             xaxis=dict(showgrid=False, zeroline=False, visible=False),
-            yaxis=dict(showgrid=False, zeroline=False, visible=False)
+            yaxis=dict(showgrid=False, zeroline=False, visible=False, autorange="reversed") # Standard image coordinate orientation
         )
+
         html_path = f"{save_dir}/interactive_cell_overlay.html"
         fig.write_html(html_path)
-        print(f"Saved interactive overlay to: {html_path}", flush=True)
-    
+        print(f"Saved multi-channel interactive overlay to: {html_path}", flush=True)
     
     def run(self):
         print(f"Starting analysis with mask type: {self.args.mask_type}", flush=True)
@@ -1580,10 +1682,25 @@ class AnalysisPipeline:
             mask = np.ones_like(img_for_masking, dtype=np.uint8) * 255
             
         elif self.args.mask_type == "MANUAL":
-            # Pass only the background image; the function will auto-generate the blank mask canvas
+            # Get the raw manual mask containing distinct integer IDs for each drawn cell
             raw_manual_mask = ImageProcessor.interactive_edit_mask(bg_img=bf_cropped, fl_img=fl_avg)
-            # Binarize so all cells have value 255 (or 1) instead of incremental label numbers
-            mask = (raw_manual_mask > 0).astype(np.uint8) * 255
+            
+            contracted_mask = np.zeros_like(raw_manual_mask, dtype=np.uint8)
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+            
+            # Iterate over each individual cell label ID (skipping background 0)
+            unique_labels = [label_id for label_id in np.unique(raw_manual_mask) if label_id > 0]
+            for label_id in unique_labels:
+                # Isolate the current cell's binary mask
+                single_cell_mask = (raw_manual_mask == label_id).astype(np.uint8)
+                
+                # Apply morphological erosion to contract the label slightly
+                eroded_cell = cv2.erode(single_cell_mask, kernel, iterations=1)
+                
+                # Add contracted label back to the final binary mask canvas
+                contracted_mask[eroded_cell > 0] = 255
+                
+            mask = contracted_mask 
             
         elif self.args.mask_type == "file":
             mask = io.imread(glob.glob(f"{self.args.save_dir}/{self.args.mask_prefix}*.tif")[0])
@@ -1696,8 +1813,18 @@ class AnalysisPipeline:
             csv_path = f"{self.args.save_dir}/cell_fitting_parameters.csv"
             df_fits.to_csv(csv_path, index=False)
             print(f"\nSaved all cell fitting parameters to: {csv_path}", flush=True)
-        if img_for_masking is not None:
-            self.create_interactive_html(img_for_masking, objects, all_fit_results, fit_outlines, self.args.save_dir)
+        #if img_for_masking is not None:
+        #    self.create_interactive_html(img_for_masking, objects, all_fit_results, fit_outlines, self.args.save_dir)
+        images_dict = {}
+        if bf_cropped is not None:
+            images_dict["Brightfield (BF)"] = bf_cropped
+        if L_chan is not None:
+            images_dict["Channel L"] = np.mean(L_chan[:int(self.args.frame_avg)], axis=0).astype(np.uint16)
+        if R_chan is not None:
+            images_dict["Channel R"] = np.mean(R_chan[:int(self.args.frame_avg)], axis=0).astype(np.uint16)
+        # Generate multi-channel HTML
+        if images_dict:
+            self.create_interactive_html(images_dict, objects, all_fit_results, fit_outlines, self.args.save_dir)
         if all_objects_data and mask_stack_list:
             stack_masks = np.array(mask_stack_list)
             tifffile.imwrite(f"{self.args.save_dir}/mask_stack.tif", stack_masks * 255, imagej=True)

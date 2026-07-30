@@ -166,7 +166,7 @@ dependencies:
   - setuptools=80.9.0=pyhff2d567_0
   - six=1.17.0=pyhe01879c_1
   - snappy=1.2.2=h7fa0ca8_1
-  - spyder-kernels=2.5.0=win_pyh7428d3b_0
+  - spyder-kernels=2.4.4
   - sqlite=3.51.0=hdb435a2_0
   - stack_data=0.6.3=pyhd8ed1ab_1
   - svt-av1=3.1.2=hac47afa_0
