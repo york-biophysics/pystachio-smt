@@ -1659,6 +1659,7 @@ class AnalysisPipeline:
                 
             # --- PATH 3: STANDARD PYTORCH ---
             elif self.args.model_type == "pytorch":
+                import torch
                 patches, h, w = ImageProcessor.make_patches(img_for_masking, self.args.inv_bf)
                 preds = []
                 with torch.no_grad():
