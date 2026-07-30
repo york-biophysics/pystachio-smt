@@ -43,7 +43,8 @@ def main(folder_name,save_dir,num_channels,channel,tmats_path):
         fov_path = os.path.join(folder_name, folder)
         results_path = os.path.join(fov_path, "results")
         
-        name = folder.split("_")[-1]
+        # CHANGED: Use the full folder name instead of splitting it
+        name = folder 
         
         # Check if the results folder exists (instead of cell folders)
         if os.path.exists(results_path):
@@ -58,7 +59,11 @@ def main(folder_name,save_dir,num_channels,channel,tmats_path):
                     
                 blurred_img = cv2.GaussianBlur(img, ksize=(5,5), sigmaX=0)
                 
-                mask = io.imread(f"{fov_path}/results/all_cells_mask.tif")
+                try:
+                    mask = io.imread(f"{fov_path}/results/all_cells_mask.tif")
+                except FileNotFoundError:
+                    print(f"Warning: Missing mask for {name}, using blank.")
+                    mask = blank.copy()
       
                 try:
                     bf_img = io.imread(f"{fov_path}/results/BF.tif")
@@ -67,15 +72,15 @@ def main(folder_name,save_dir,num_channels,channel,tmats_path):
                 
                 axes[i, 0].imshow(bf_img, cmap='gray')
                 axes[i, 0].axis('off')  # Turn off axes
-                axes[i, 0].set_title(f'Brightfield {name}')
+                axes[i, 0].set_title(f'Brightfield\n{name}', fontsize=9)
                 
                 axes[i, 1].imshow(img,cmap=color)
                 axes[i, 1].axis('off')  # Turn off axes
-                axes[i, 1].set_title(f'Left {name}')
+                axes[i, 1].set_title(f'Left\n{name}', fontsize=9)
             
                 axes[i, 2].imshow(mask,cmap='gray')
                 axes[i, 2].axis('off')  # Turn off axes
-                axes[i, 2].set_title(f'Right {name}')
+                axes[i, 2].set_title(f'Right\n{name}', fontsize=9)
                 
             
             if num_channels == 2: 
@@ -92,7 +97,12 @@ def main(folder_name,save_dir,num_channels,channel,tmats_path):
                 sr = StackReg(StackReg.RIGID_BODY)
                 transformation_matrix = np.load(tmats_path)
                 
-                mask_L = io.imread(f"{fov_path}/results/all_cells_mask.tif")
+                try:
+                    mask_L = io.imread(f"{fov_path}/results/all_cells_mask.tif")
+                except FileNotFoundError:
+                    print(f"Warning: Missing mask for {name}, using blank.")
+                    mask_L = blank.copy()
+                    
                 try:
                     bf_img = io.imread(f"{fov_path}/results/BF.tif")
                 except:
@@ -109,15 +119,15 @@ def main(folder_name,save_dir,num_channels,channel,tmats_path):
                 
                 axes[i, 0].imshow(bf_img, cmap='gray')
                 axes[i, 0].axis('off')  # Turn off axes
-                axes[i, 0].set_title(f'Brightfield {name}')
+                axes[i, 0].set_title(f'Brightfield\n{name}', fontsize=9)
                 
                 axes[i, 1].imshow(img_L,cmap="Greens")
                 axes[i, 1].axis('off')  # Turn off axes
-                axes[i, 1].set_title(f'Left {name}')
+                axes[i, 1].set_title(f'Left\n{name}', fontsize=9)
                 
                 axes[i, 2].imshow(img_R,cmap="Reds")
                 axes[i, 2].axis('off')  # Turn off axes
-                axes[i, 2].set_title(f'Right {name}')
+                axes[i, 2].set_title(f'Right\n{name}', fontsize=9)
                 
                 img_R= img_R/np.amax(img_R) * 255
                 img_L= img_L/np.amax(img_L) * 255
@@ -131,11 +141,11 @@ def main(folder_name,save_dir,num_channels,channel,tmats_path):
                 
                 axes[i, 3].imshow(composite_merge)
                 axes[i, 3].axis('off')  # Turn off axes
-                axes[i, 3].set_title(f'Merge')
+                axes[i, 3].set_title(f'Merge\n{name}', fontsize=9)
             
                 axes[i, 4].imshow(mask_L,cmap="gray")
                 axes[i, 4].axis('off')  # Turn off axes
-                axes[i, 4].set_title(f'mask')
+                axes[i, 4].set_title(f'Mask\n{name}', fontsize=9)
             
         else:
             print(i)
@@ -143,37 +153,37 @@ def main(folder_name,save_dir,num_channels,channel,tmats_path):
                 
                 axes[i, 0].imshow(blank)
                 axes[i, 0].axis('off')  # Turn off axes
-                axes[i, 0].set_title(f'Brightfield {name}')
+                axes[i, 0].set_title(f'Brightfield\n{name}', fontsize=9)
                 
                 axes[i, 1].imshow(blank)
                 axes[i, 1].axis('off')  # Turn off axes
-                axes[i, 1].set_title(f'Left {name}')
+                axes[i, 1].set_title(f'Left\n{name}', fontsize=9)
             
                 axes[i, 2].imshow(blank)
                 axes[i, 2].axis('off')  # Turn off axes
-                axes[i, 2].set_title(f'Right {name}')
+                axes[i, 2].set_title(f'Right\n{name}', fontsize=9)
                 
             if num_channels == 2: 
                 
                 axes[i, 0].imshow(blank, cmap='gray')
                 axes[i, 0].axis('off')  # Turn off axes
-                axes[i, 0].set_title(f'Brightfield {i}')
+                axes[i, 0].set_title(f'Brightfield\n{name}', fontsize=9)
                 
                 axes[i, 1].imshow(blank,cmap="Greens")
                 axes[i, 1].axis('off')  # Turn off axes
-                axes[i, 1].set_title(f'Left {name}')
+                axes[i, 1].set_title(f'Left\n{name}', fontsize=9)
                 
                 axes[i, 2].imshow(blank,cmap="Reds")
                 axes[i, 2].axis('off')  # Turn off axes
-                axes[i, 2].set_title(f'Right {name}')
+                axes[i, 2].set_title(f'Right\n{name}', fontsize=9)
                 
                 axes[i, 3].imshow(blank)
                 axes[i, 3].axis('off')  # Turn off axes
-                axes[i, 3].set_title(f'Merge')
+                axes[i, 3].set_title(f'Merge\n{name}', fontsize=9)
             
                 axes[i, 4].imshow(blank)
                 axes[i, 4].axis('off')  # Turn off axes
-                axes[i, 4].set_title(f'mask')
+                axes[i, 4].set_title(f'Mask\n{name}', fontsize=9)
              
     plt.tight_layout()
     plt.savefig(f"{save_dir}/All_FoVs.png")         

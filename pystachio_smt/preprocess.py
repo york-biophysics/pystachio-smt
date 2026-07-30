@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import torch
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 from keras.models import load_model
@@ -687,7 +688,7 @@ class MaskEditor:
     - Click points + 'r': Reject/delete selected cell masks
     - 'z': Undo last change | 'x': Clear current path points | 'd': Done/Save
     """
-    def __init__(self, mask, bf_img=None, fl_img=None, sausage_width=16, alpha=0.4, outline_alpha=0.7):
+    def __init__(self, mask, bf_img=None, fl_img=None, sausage_width=14, alpha=0.4, outline_alpha=0.7):
         conflicting_keys = ['f', 'c', 'r', 'z', 'a', 'p', 'x', 'd', '+', '-', '=']
         for param in plt.rcParams:
             if param.startswith('keymap.'):
@@ -1112,7 +1113,7 @@ class AnalysisPipeline:
                 
             elif params.model_type == "pytorch":
                 print("Loading standard PyTorch model...", flush=True)
-                import torch
+                #import torch
                 self.model = torch.load(params.model, map_location=torch.device('cpu'))
                 self.model.eval() 
 
