@@ -25,6 +25,8 @@ Version: 0.9.0
 """
 
 import sys
+import os
+import datetime
 from difflib import SequenceMatcher
 
 default_parameters = {

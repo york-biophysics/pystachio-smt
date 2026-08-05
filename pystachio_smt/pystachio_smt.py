@@ -29,7 +29,6 @@ import postprocessing
 import simulation
 import tracking
 import trajectories
-import preprocess
 import os
 import datetime
 
@@ -66,7 +65,6 @@ def main():
     sim=False
     
     for task in params.task:
-
         if task == "help":
             # Safely check if a specific help topic was requested
             if len(args) > 0:
@@ -75,6 +73,7 @@ def main():
                 params.help()
 
         elif task == "preprocess":
+            import preprocess
             preprocess.run_preprocessing(params)
 
         elif task == "track":
