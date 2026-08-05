@@ -2,8 +2,6 @@
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
-# Copyright © 2020 Edward Higgins <ed.higgins@york.ac.uk>
-#
 # Distributed under terms of the MIT license.
 
 """ PARAMETERS - Program parameters module
@@ -11,15 +9,19 @@
 Description:
     parameters.py contains the Parameters class that holds all the program
     parameters, along with the default value for each parameter and routines
-    for setting those parameters.
+    for setting those parameters, and the save_parameters helper function to 
+    write out params used
 
 Contains:
     class Parameters
+    function save_parameters
 
 Author:
     Edward Higgins
+    Jack Shepherd
+    Lewis Frame
 
-Version: 0.2.0
+Version: 0.9.0
 """
 
 import sys
@@ -544,3 +546,83 @@ class Parameters:
 
         return param_dict
 
+
+def save_parameters(params, save_dir="."):    
+    # 1. Define parameter categories
+    PARAM_GROUPS = {
+        "General": [
+            "task", "name", "overwrite", "num_frames", "pixel_size", 
+            "use_channel", "num_channels", "ALEX"
+        ],
+        "Preprocessing": [
+            "video_path", "bead_path", "bf_path", "tmats_path", "roi_file", 
+            "roi_channel", "mask_type", "mask_prefix", "model", "model_type", 
+            "area_filter", "cell_fitting", "inv_bf", "use_otsu", "frame_avg",
+            "manual_registration", "manual_pairs"
+        ],
+        "Tracking": [
+            "search_radius", "min_trajectory_len", "max_linking_distance", 
+            "tracking_method", "detection_threshold"
+        ],
+        "Simulation / Postprocessing": [
+            "sim_type", "postprocess_mode", "output_format"
+        ]
+    }
+
+    # 2. Extract key-value dictionary safely
+    if hasattr(params, '__dict__'):
+        param_dict = vars(params)
+    else:
+        param_dict = {
+            attr: getattr(params, attr) 
+            for attr in dir(params) 
+            if not attr.startswith('_') and not callable(getattr(params, attr))
+        }
+
+    # 3. Clean string values
+    cleaned_params = {}
+    for k, v in param_dict.items():
+        if callable(v):
+            continue
+        if isinstance(v, (list, tuple, set)):
+            cleaned_params[k] = ", ".join(map(str, v)) if v else "None"
+        elif v is None or str(v).strip() == "":
+            cleaned_params[k] = "None"
+        else:
+            cleaned_params[k] = str(v)
+
+    # 4. Calculate longest key length across all keys for uniform alignment
+    max_key_len = max((len(k) for k in cleaned_params.keys()), default=20)
+
+    # 5. Track which keys have been categorized
+    written_keys = set()
+    filepath = os.path.join(save_dir, "parameters.txt")
+
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write("==================================================\n")
+        f.write(" PySTACHIO Parameters\n")
+        f.write(f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write("==================================================\n")
+
+        # Write categorized sections
+        for group_name, keys in PARAM_GROUPS.items():
+            # Check if any key from this group exists in the parameters
+            present_keys = [k for k in keys if k in cleaned_params]
+            if not present_keys:
+                continue
+
+            f.write(f"\n--- [{group_name}] ---\n")
+            for k in sorted(present_keys):
+                f.write(f"{k:<{max_key_len}} : {cleaned_params[k]}\n")
+                written_keys.add(k)
+
+        # Catch-all section for any parameters not explicitly in PARAM_GROUPS
+        remaining_keys = set(cleaned_params.keys()) - written_keys
+        if remaining_keys:
+            f.write("\n--- [Other / Custom] ---\n")
+            for k in sorted(remaining_keys):
+                f.write(f"{k:<{max_key_len}} : {cleaned_params[k]}\n")
+
+        f.write("\n==================================================\n")
+
+    print(f"Parameters saved to: {filepath}", flush=True)
