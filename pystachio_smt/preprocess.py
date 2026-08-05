@@ -1587,7 +1587,7 @@ class AnalysisPipeline:
                 
                 # 1. Generate the 3-channel visual mask via Omnipose
                 visual_mask = RunOmnipose.main(img_for_masking, self.args.model, self.args.save_dir)
-                io.imsave(f'{self.args.save_dir}/visual_mask_omni.tif', visual_mask, check_contrast=False)
+                io.imsave(f'{self.args.save_dir}/visual_mask_omni.png', visual_mask, check_contrast=False)
                 
                 # 2. Create a blank 2D canvas based on the original image dimensions
                 prediction = np.zeros(img_for_masking.shape, dtype=np.uint8)
