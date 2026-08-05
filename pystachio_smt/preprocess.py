@@ -1740,7 +1740,6 @@ class AnalysisPipeline:
             os.makedirs(cell_dir, exist_ok=True)
             
             obj_data = {prop: getattr(obj, prop) for prop in ['label', 'area', 'bbox', 'centroid', 'eccentricity', 'major_axis_length', 'minor_axis_length', 'orientation', 'solidity', 'perimeter'] if hasattr(obj, prop)}
-            all_objects_data.append(obj_data)
             
             cell_mask = (labels == obj.label).astype(np.uint8)
             mask_stack_list.append(cell_mask)
@@ -1762,10 +1761,18 @@ class AnalysisPipeline:
                     extracted_intensities[chan_name] = intensities
                     
                     # 2. Create the ROI-sized 2D average image
-                    chan_avg = np.mean(chan_data[:int(self.args.frame_avg)], axis=0).astype(np.uint16)
+                    chan_avg = np.mean(chan_data[:int(self.args.frame_avg)], axis=0)
+                    
+                    # --- CALCULATE MASK INTENSITIES FOR SUMMARY ---
+                    mask_pixels = chan_avg[cell_mask > 0]
+                    obj_data[f'mean_intensity_{chan_name}'] = float(np.mean(mask_pixels)) if len(mask_pixels) > 0 else 0.0
+                    obj_data[f'total_intensity_{chan_name}'] = float(np.sum(mask_pixels)) if len(mask_pixels) > 0 else 0.0
+                    # -----------------------------------------------
+
+                    chan_avg_uint = chan_avg.astype(np.uint16)
                     
                     # Create a copy to apply the mask
-                    masked_roi_img = chan_avg.copy()
+                    masked_roi_img = chan_avg_uint.copy()
                     
                     # Identify the background (everything outside this specific cell's mask)
                     bg_mask = (cell_mask == 0)
@@ -1783,7 +1790,42 @@ class AnalysisPipeline:
                     
                     # Plot Intensity and Fit Exponentials
                     frames_x = np.arange(len(intensities))
-                    IntensityAnalyzer.plot_intensity([frames_x, intensities], chan_name, obj_num, len(intensities), cell_dir)
+                    
+                    # Save raw intensity to CSV
+                    df_intensity = pd.DataFrame({
+                        'Frame': frames_x,
+                        'Intensity': intensities
+                    })
+                    df_intensity.to_csv(f"{cell_dir}/raw_intensity_{chan_name}.csv", index=False)
+
+                    # Capture the returned fit quality data
+                    fit_quality = IntensityAnalyzer.plot_intensity([frames_x, intensities], chan_name, obj_num, len(intensities), cell_dir)
+                    
+                    # Parse the fit data into a structured format
+                    fit_rows = []
+                    model_names = ["Single Exp", "Double Exp", "Triple Exp"]
+                    
+                    for i, fit_res in enumerate(fit_quality):
+                        if fit_res != 0:
+                            params, rchisq = fit_res
+                            row = {'Model': model_names[i], 'Reduced_ChiSq': rchisq, 'Status': 'Success'}
+                            
+                            if len(params) >= 2:
+                                row.update({'A': params[0], 'k': params[1]})
+                            if len(params) >= 4:
+                                row.update({'A1': params[2], 'k1': params[3]})
+                            if len(params) >= 6:
+                                row.update({'A2': params[4], 'k2': params[5]})
+                                
+                            fit_rows.append(row)
+                        else:
+                            fit_rows.append({'Model': model_names[i], 'Status': 'Fit Failed'})
+                            
+                    df_fit_params = pd.DataFrame(fit_rows)
+                    df_fit_params.to_csv(f"{cell_dir}/intensity_fit_params_{chan_name}.csv", index=False)
+            
+            # Append object data after all active channel intensity features are added
+            all_objects_data.append(obj_data)
             
             mat_data = {
                 'cell_num': obj_num,
