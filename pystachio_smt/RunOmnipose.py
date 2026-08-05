@@ -136,7 +136,7 @@ def main(img_obj, modeldir,save_dir):
     visual_mask = skimage.color.label2rgb(maski, bg_label=0)
     # Convert from float (0-1) to byte (0-255) for saving
     visual_mask = skimage.util.img_as_ubyte(visual_mask)
-    skimage.io.imsave(f"{save_dir}/output_visual_mask_omni.tif", visual_mask)
+    skimage.io.imsave(f"{save_dir}/output_visual_mask_omni.png", visual_mask)
 
     io.imsave(f"{save_dir}/output_flows_omni.tif", flowi.astype(np.float32))
 
