@@ -115,7 +115,7 @@ class ImageData:
         # Create the data array
         img_data = self.as_image(drop_dim=False)
 
-        tifffile.imsave(filename, img_data)
+        tifffile.imwrite(filename, img_data)
 
     def rotate(self, angle):
         if angle % 90 == 0:

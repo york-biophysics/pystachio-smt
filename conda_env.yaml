@@ -6,8 +6,5 @@ dependencies:
   - scipy
   - matplotlib
   - py-opencv
-  - dash
-  - dash-bootstrap-components
-  - plotly
   - tifffile
   - numba

@@ -165,6 +165,33 @@ default_parameters = {
           'class': 'simulation',
           'default': False },
 
+    'photoblink':
+        { 'description': 'Allow fully bleached spots to photoblink',
+          'level': 'basic',
+          'class': 'simulation',
+          'default': True },
+
+    'p_photoblink':
+        { 'description': 'Probability that a bleached fluorophore blinks',
+          'level': 'basic',
+          'class': 'simulation',
+          'default': 0.001 },    
+
+    'psf_name':
+    { 'description': 'Name of the PSF .npy file to use for a 3D simulation',
+      'level': 'basic',
+      'class': 'simulation',
+      'default': None
+        },
+
+    'spherical_volume_radius':
+    { 'description': 'Radius in microns of the spherical volume in which to simulate 3D diffusion',
+      'level': 'basic',
+      'class': 'simulation',
+      'default': 1.0,
+        },
+
+    
     # Tracking parameters
     'bw_threshold_tolerance':
         { 'description': 'Threshold for generating the b/w image relative to the peak intensity',
@@ -217,6 +244,11 @@ default_parameters = {
           'level': 'advanced',
           'class': 'tracking',
           'default': 5 },
+    'astigmatism':
+        { 'description': 'Whether to do astigmatic imaging or rejecting fitted PSFs that have a ratio of x:y widths >=2',
+          'level': 'basic',
+          'class': 'tracking',
+          'default': False },
 
     # Postprocessing parameters
     'display_figures':
@@ -244,11 +276,16 @@ default_parameters = {
           'level': 'advanced',
           'class': 'postprocessing',
           'default': 'Linear',
-          'options': ['Linear', 'Mean', 'Initial'] },
+          'options': ['Linear', 'Mean', 'Initial', 'Max'] },
     'num_stoic_frames': {
           'level': 'advanced',
           'class': 'postprocessing',
           'description': 'Number of frames used to determine the stoichiometry',
+          'default': 3 },
+    'stoic_trajectory_start_within_n_frames': {
+          'level': 'advanced',
+          'class': 'postprocessing',
+          'description': 'A trajectory must start within n frames of the start of the image acquisition to be used',
           'default': 3 },
     'calculate_isingle': {
           'level': 'advanced',

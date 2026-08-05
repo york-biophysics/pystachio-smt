@@ -36,6 +36,9 @@ def track(params):
     image_data = images.ImageData()
     image_data.read(params.name + ".tif", params)
 
+    if params.num_frames != 0:
+        image_data.num_frames = params.num_frames
+
     if params.ALEX==True:
         imageL=np.zeros((image_data.num_frames//2,image_data.frame_size[1],image_data.frame_size[0]//2))
         imageR=np.zeros((image_data.num_frames//2,image_data.frame_size[1],image_data.frame_size[0]//2))

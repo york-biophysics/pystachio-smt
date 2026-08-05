@@ -8,19 +8,33 @@ If you prefer not to use pip for some reason, you can install manually. Requirem
 
 ## Running PySTACHIO
 
-PySTACHIO has two user modes: GUI via a web app built with plotly and a command line interface that is suitable for use with Linux, Mac, or a Python interpreter in Windows. Probably it works OK with PowerShell too but we haven't tried it because none of us know PowerShell. In general we believe that the command line interface is the best, most flexible way to use PySTACHIO. The GUI is useful for testing analysis parameters and visualizing PySTACHIO's performance, but for a large data set or convergence testing it will almost always be necessary to write a script to call PySTACHIO recursively with modified parameters or different data files, unless you like clicking the same few buttons every few minutes for an entire day.
+PySTACHIO has two user modes: GUI via apps built on matplotlib and Tkinter and a command line interface that is suitable for use with Linux, Mac, or a Python interpreter in Windows. Probably it works OK with PowerShell too but we haven't tried it because none of us know PowerShell. In general we believe that the command line interface is the best, most flexible way to use PySTACHIO. The GUIs are useful for testing analysis parameters and visualizing PySTACHIO's performance and output, but for a large data set or convergence testing it will almost always be necessary to write a script to call PySTACHIO recursively with modified parameters or different data files, unless you like clicking the same few buttons every few minutes for an entire day.
 
 ### From the GUI
 
-The GUI is built on plotly and runs as a web app. You can start the web app by double clicking ``PySTACHIO_LINUX`` or ``PySTACHIO_WIN`` in the PySTACHIO directory. This will launch a server instance you may connect with by opening a web browser and navigating to `localhost:8050`.
+To get up and running with a GUI, run it:
 
-The opening screen is shown below with annotations. Briefly, choose a file from your computer with the select file button in the “track” tab, change the parameters you want to change (default values are already loaded so no need to specify everything) and click track. Once this is done you may switch to the analysis pane to perform postprocessing analysis on the tracks file you have just generated. To do this, select the ... from the drop down box and click analyze - again defaults are preloaded so only modify what you want. By default PySTACHIO does all its analysis on all datasets as the analysis is cheap - on the other than that may mean you end up with graphs and analysis files which are unwanted or nonsensical. You should be careful that the analysis you use you actually trust.
+   $python3 gui.py
+
+This will start the GUI, ask you for to pick a file, and load up a matplotlib window with clicky buttons and changeable parameters. You can use the "find spots" button to see where PySTACHIO has found spots in the displayed frame of your image. When you are satisfied that the parameters are OK for your data, you can click "run full analysis" to run the full analysis on the whole image stack.
+
+To use 'click mode', run it:
+
+   $python3 clickmode.py
+
+You can click a spot you like the look of, and the centre will be refined as usual for PySTACHIO, and the intensity of the spot tracked through time and displayed. You can click as many spots as you like, clear them at any time, or choose a new file to work on instead. This mode is primarily useful to see "overtracking" and stepwise photobleaching of molecular clusters or assemblies.
+
+To use the smFRET code, run it:
+
+   $python3 smFRET.py
+
+This is still a work in progress.
 
 ### From the command line
 
 PySTACHIO on the command line has a relatively straightforward syntax which should be trivially scriptable (here square brackets indicate a required argument and curly braces indicate optional arguments):
 
-    pystachio-smt [TASK_LIST] [IMAGE_FILE] {KEYWORD_ARGUMENTS}
+    $python3 pystachio-smt [TASK_LIST] [IMAGE_FILE] {KEYWORD_ARGUMENTS}
 
 We will take each of these in order:
 
