@@ -1,0 +1,505 @@
+import sys
+import os
+import numpy as np
+import tifffile as tf
+import cv2
+import matplotlib
+matplotlib.use('QtAgg')
+
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qtagg import NavigationToolbar2QT as NavigationToolbar
+import matplotlib.pyplot as plt
+
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, 
+                             QLineEdit, QLabel, QRadioButton, QGroupBox, QFileDialog, 
+                             QCheckBox, QMessageBox)
+from PyQt6.QtCore import Qt
+
+try:
+    import images
+    import spots
+    import parameters
+    import trajectories
+    import postprocessing
+    MODULES_LOADED = True
+except ImportError:
+    MODULES_LOADED = False
+
+def show_popup(parent, title, text, critical=False):
+    msg = QMessageBox(parent)
+    msg.setWindowTitle(title)
+    msg.setText(text)
+    msg.setIcon(QMessageBox.Icon.Critical if critical else QMessageBox.Icon.Information)
+    msg.exec()
+
+
+# =========================================================================
+# TAB 3: CLICK MODE (DYNAMIC SPLITTING & GLOBALLY LINKED IDs)
+# =========================================================================
+class ClickModeTab(QWidget):
+    def __init__(self, parent_suite=None):
+        super().__init__()
+        self.parent_suite = parent_suite
+        self.params = parameters.Parameters()
+        self.active_frame = 0
+        
+        # Persistent Storage for On-the-Fly Splitting
+        self.raw_stack = None
+        self.loaded_fname = None
+        
+        # --- ID Linking Ledger ---
+        self.global_track_id = 0
+        self.click_events = [] # Stores dicts: {"id": int, "ch1": [x,y] or None, "ch2": [x,y] or None}
+        
+        # Native Separated Channel State
+        self.img_ch1 = None
+        self.img_ch2 = None
+        self.coords_ch1 = []
+        self.coords_ch2 = []
+        self.trajs_ch1 = []
+        self.trajs_ch2 = []
+        
+        # Backward Compatibility Fallbacks for Main Suite Window Reset
+        self.image_data = None 
+        self.coords = []
+        self.trajs = []
+        self.all_spots = []
+
+        self.init_ui()
+
+    def init_ui(self):
+        main_layout = QHBoxLayout(self)
+        
+        # --- Matplotlib Canvas Section ---
+        canvas_layout = QVBoxLayout()
+        self.fig, (self.ax1, self.ax2, self.ax3) = plt.subplots(1, 3, figsize=(14, 5))
+        self.fig.subplots_adjust(bottom=0.15, wspace=0.3)
+        self.canvas = FigureCanvas(self.fig)
+        self.canvas.mpl_connect('button_press_event', self.onclick)
+        self.toolbar = NavigationToolbar(self.canvas, self)
+
+        canvas_layout.addWidget(self.toolbar)
+        canvas_layout.addWidget(self.canvas)
+        
+        slider_layout = QHBoxLayout()
+        self.frame_label = QLabel("Frame: 0 / 0")
+        self.frame_slider = QSlider(Qt.Orientation.Horizontal)
+        self.frame_slider.setMinimum(0)
+        self.frame_slider.setValue(0)
+        self.frame_slider.setEnabled(False)
+        self.frame_slider.valueChanged.connect(self.update_frame)
+        
+        slider_layout.addWidget(self.frame_label)
+        slider_layout.addWidget(self.frame_slider)
+        canvas_layout.addLayout(slider_layout)
+        
+        main_layout.addLayout(canvas_layout, stretch=4)
+
+        # --- Interactive Controls Panel ---
+        control_layout = QVBoxLayout()
+        
+        # Configuration Mode Selection
+        mode_group = QGroupBox("Channel Mode")
+        mode_lay = QVBoxLayout()
+        self.rb_single = QRadioButton("Single Channel (Full Frame)")
+        self.rb_dual = QRadioButton("Dual Channel (Split Side-by-Side)")
+        self.rb_single.setChecked(True)
+        self.rb_single.toggled.connect(self.on_mode_change)
+        mode_lay.addWidget(self.rb_single)
+        mode_lay.addWidget(self.rb_dual)
+        mode_group.setLayout(mode_lay)
+        control_layout.addWidget(mode_group)
+
+        # Propagation Parameter Configuration
+        self.chk_propagate = QCheckBox("Propagate clicks to other channel")
+        self.chk_propagate.setEnabled(False)
+        control_layout.addWidget(self.chk_propagate)
+
+        # Core Pipeline Buttons
+        self.btn_pick_file = QPushButton("Load TIF Stack File")
+        self.btn_pick_file.clicked.connect(self.pick_file)
+        self.btn_clear = QPushButton("Clear Clicks")
+        self.btn_clear.clicked.connect(self.clear_plot)
+        self.btn_refresh = QPushButton("Refresh Plot")
+        self.btn_refresh.clicked.connect(self.refresh_plot)
+        
+        control_layout.addWidget(self.btn_pick_file)
+        control_layout.addWidget(self.btn_clear)
+        control_layout.addWidget(self.btn_refresh)
+
+        # Signal Filtering Customization
+        ck_group = QGroupBox("Chung-Kennedy Filter?")
+        ck_lay = QHBoxLayout()
+        self.ck_yes, self.ck_no = QRadioButton("Yes"), QRadioButton("No")
+        self.ck_yes.setChecked(True)
+        ck_lay.addWidget(self.ck_yes); ck_lay.addWidget(self.ck_no)
+        ck_group.setLayout(ck_lay)
+        control_layout.addWidget(ck_group)
+
+        stoic_group = QGroupBox("Estimate stoichiometry?")
+        stoic_lay = QHBoxLayout()
+        self.stoic_yes, self.stoic_no = QRadioButton("Yes"), QRadioButton("No")
+        self.stoic_no.setChecked(True)
+        stoic_lay.addWidget(self.stoic_yes); stoic_lay.addWidget(self.stoic_no)
+        stoic_group.setLayout(stoic_lay)
+        control_layout.addWidget(stoic_group)
+
+        control_layout.addWidget(QLabel("Estimate Isingle:"))
+        self.isingle_box = QLineEdit("120")
+        control_layout.addWidget(self.isingle_box)
+        
+        # Storage & Export Selection
+        export_group = QGroupBox("Export Selection")
+        export_lay = QVBoxLayout()
+        self.save_ch1 = QRadioButton("Ch 1 (Left/Single) Only")
+        self.save_ch2 = QRadioButton("Ch 2 (Right) Only")
+        self.save_both = QRadioButton("Save Both Channels")
+        self.save_ch1.setChecked(True)
+        export_lay.addWidget(self.save_ch1)
+        export_lay.addWidget(self.save_ch2)
+        export_lay.addWidget(self.save_both)
+        export_group.setLayout(export_lay)
+        control_layout.addWidget(export_group)
+
+        control_layout.addWidget(QLabel("Output Base Name:"))
+        self.outname_box = QLineEdit("clickmode_output")
+        control_layout.addWidget(self.outname_box)
+        self.btn_save = QPushButton("Save Trajectories")
+        self.btn_save.clicked.connect(self.save_data)
+        control_layout.addWidget(self.btn_save)
+        
+        control_layout.addStretch()
+        main_layout.addLayout(control_layout, stretch=1)
+        
+        self.apply_axes_layout()
+
+    def on_mode_change(self):
+        """Triggers dynamic, on-the-fly channel segmenting or joining from stored stack memory."""
+        self.chk_propagate.setEnabled(self.rb_dual.isChecked())
+        if self.rb_dual.isChecked():
+            self.save_both.setChecked(True)
+        else:
+            self.save_ch1.setChecked(True)
+            
+        self.apply_axes_layout()
+        
+        if self.raw_stack is not None and self.loaded_fname is not None:
+            self.process_image_channels()
+        else:
+            self.clear_plot()
+
+    def apply_axes_layout(self):
+        """Adjusts subplot visual sizing profiles without instantiating or destroying underlying Axes."""
+        if self.rb_single.isChecked():
+            self.ax2.set_visible(False)
+            self.ax1.set_position([0.05, 0.15, 0.4, 0.75])
+            self.ax3.set_position([0.55, 0.15, 0.4, 0.75])
+        else:
+            self.ax2.set_visible(True)
+            self.ax1.set_position([0.05, 0.15, 0.28, 0.75])
+            self.ax2.set_position([0.36, 0.15, 0.28, 0.75])
+            self.ax3.set_position([0.69, 0.15, 0.28, 0.75])
+        self.canvas.draw_idle()
+
+    def create_pystachio_image(self, array_data, filename):
+        """Constructs an isolated, native PySTACHIO ImageData structure map."""
+        img = images.ImageData()
+        img.read(filename, self.params)
+        img.pixel_data = array_data
+        img.num_frames = array_data.shape[0]
+        img.frame_size = [array_data.shape[2], array_data.shape[1]]
+        img.has_mask, img.mask_data = True, np.ones((array_data.shape[1], array_data.shape[2]))
+        return img
+
+    def pick_file(self):
+        """Ingests raw file path reference from file explorer dialog."""
+        fname, _ = QFileDialog.getOpenFileName(self, "Open TIF Stack File", filter="TIFF Files (*.tif *.tiff)")
+        if not fname or not MODULES_LOADED: return
+        
+        if self.parent_suite: 
+            self.parent_suite.reset_entire_suite()
+            
+        self.loaded_fname = fname
+        self.params.name = fname[:-4]
+        try:
+            raw = tf.imread(fname)
+            if raw.ndim < 3: 
+                raw = raw[np.newaxis, :, :]
+            self.raw_stack = raw
+            
+            self.process_image_channels()
+            
+            self.frame_slider.setMaximum(self.img_ch1.num_frames - 1)
+            self.frame_slider.setValue(0)
+            self.frame_slider.setEnabled(True)
+            
+        except Exception as e:
+            show_popup(self, "Ingestion Error", f"Failed to open image file:\n{e}", critical=True)
+
+    def process_image_channels(self):
+        """Executes the split-channel mapping segmentation entirely on the fly from memory."""
+        if self.raw_stack is None or self.loaded_fname is None: return
+        
+        self.clear_plot()
+        
+        if self.rb_single.isChecked():
+            self.img_ch1 = self.create_pystachio_image(np.ascontiguousarray(self.raw_stack), self.loaded_fname)
+            self.img_ch2 = None
+            self.image_data = self.img_ch1
+        else:
+            mid = self.raw_stack.shape[2] // 2
+            self.img_ch1 = self.create_pystachio_image(np.ascontiguousarray(self.raw_stack[:, :, :mid]), self.loaded_fname)
+            self.img_ch2 = self.create_pystachio_image(np.ascontiguousarray(self.raw_stack[:, :, mid:]), self.loaded_fname)
+            self.image_data = self.img_ch1
+            
+        self.update_frame()
+        self.canvas.draw_idle()
+
+    def update_frame(self, val=None):
+        if val is not None: 
+            self.active_frame = val
+            
+        if not self.img_ch1: 
+            return
+            
+        self.frame_label.setText(f"Frame: {self.active_frame} / {self.frame_slider.maximum()}")
+        
+        # Render Channel 1 Local Viewport
+        self.ax1.clear()
+        self.ax1.imshow(self.img_ch1[self.active_frame].as_image(), cmap='Greys_r')
+        self.ax1.set_title("Channel 1 (Left)" if self.rb_dual.isChecked() else "Channel 1")
+        
+        # Render Channel 2 Local Viewport
+        if self.rb_dual.isChecked() and self.img_ch2:
+            self.ax2.clear()
+            self.ax2.imshow(self.img_ch2[self.active_frame].as_image(), cmap='Greys_r')
+            self.ax2.set_title("Channel 2 (Right)")
+
+        # Map all global spots explicitly with their unique Global IDs
+        for event in self.click_events:
+            track_id = event["id"]
+            if event["ch1"] is not None:
+                cx, cy = event["ch1"]
+                self.ax1.scatter(cx, cy, marker='x', color='red')
+                self.ax1.text(cx + 2, cy + 2, str(track_id), color='red', fontsize=8, fontweight='bold')
+                
+            if self.rb_dual.isChecked() and self.img_ch2 and event["ch2"] is not None:
+                cx, cy = event["ch2"]
+                self.ax2.scatter(cx, cy, marker='x', color='blue')
+                self.ax2.text(cx + 2, cy + 2, str(track_id), color='blue', fontsize=8, fontweight='bold')
+
+        self.canvas.draw_idle()
+
+    def onclick(self, event):
+        if event.xdata is None or event.ydata is None or not self.img_ch1 or not MODULES_LOADED: return
+        
+        mode = getattr(self.toolbar, 'mode', '')
+        if hasattr(mode, 'value'): mode = mode.value
+        if mode != "": return
+
+        do_propagate = self.chk_propagate.isChecked()
+        reg_mat = getattr(self.parent_suite, 'registration_matrix', None)
+
+        # Generate a globally unique ID for this explicit click action
+        current_id = self.global_track_id
+        self.global_track_id += 1        
+        click_record = {"id": current_id, "frame": self.active_frame, "ch1": None, "ch2": None}
+
+        # Path A: Click Action registered on Channel 1
+        if event.inaxes == self.ax1:
+            rx, ry = self.refine_point(event.xdata, event.ydata, self.img_ch1)
+            click_record["ch1"] = [rx, ry]
+            
+            if self.rb_dual.isChecked() and do_propagate and self.img_ch2 is not None:
+                if reg_mat is not None:
+                    px, py = np.dot(reg_mat, [rx, ry, 1.0])[:2]
+                else:
+                    px, py = rx, ry
+                rx2, ry2 = self.refine_point(px, py, self.img_ch2)
+                click_record["ch2"] = [rx2, ry2]
+
+        # Path B: Click Action registered on Channel 2
+        elif self.rb_dual.isChecked() and event.inaxes == self.ax2 and self.img_ch2 is not None:
+            rx2, ry2 = self.refine_point(event.xdata, event.ydata, self.img_ch2)
+            click_record["ch2"] = [rx2, ry2]
+            
+            if do_propagate:
+                if reg_mat is not None:
+                    try:
+                        inv_mat = cv2.invertAffineTransform(reg_mat[:2, :])
+                        px, py = np.dot(inv_mat, [rx2, ry2, 1.0])
+                    except Exception as matrix_err:
+                        print(f"Matrix inversion failure: {matrix_err}. Defaulting to identity transfer.")
+                        px, py = rx2, ry2
+                else:
+                    px, py = rx2, ry2
+                rx, ry = self.refine_point(px, py, self.img_ch1)
+                click_record["ch1"] = [rx, ry]
+        else:
+            return
+
+        self.click_events.append(click_record)
+
+        # Rebuild trajectories and stamp them with the Global Tracking ID
+        ch1_events = [e for e in self.click_events if e["ch1"] is not None]
+        self.coords_ch1 = [e["ch1"] for e in ch1_events]
+        self.trajs_ch1 = self.extract_trajectories(ch1_events, self.img_ch1, "ch1")
+
+        if self.rb_dual.isChecked():
+            ch2_events = [e for e in self.click_events if e["ch2"] is not None]
+            self.coords_ch2 = [e["ch2"] for e in ch2_events]
+            self.trajs_ch2 = self.extract_trajectories(ch2_events, self.img_ch2, "ch2")
+                    
+        self.coords = self.coords_ch1
+        self.trajs = self.trajs_ch1
+        
+        self.refresh_plot()
+
+    def refine_point(self, x, y, target_image_object):
+        """Utilizes PySTACHIO engine mechanics to find local sub-pixel spot centroids."""
+        s = spots.Spots(frame=self.active_frame)
+        s.set_positions(np.array([[x, y]]))
+        s.num_spots = 1
+        s.refine_centres(target_image_object[self.active_frame], self.params)
+        
+        if s.positions is not None and len(s.positions) > 0:
+            return float(s.positions[0][0]), float(s.positions[0][1])
+        return float(x), float(y)
+
+    def extract_trajectories(self, click_events, target_image_object, channel_key):
+        """Assembles continuous multi-frame intensity data from an array of explicit click events."""
+        if not click_events: return []
+        
+        all_trajs = []
+        
+        for event in click_events:
+            origin_frame = event["frame"]
+            coord = event[channel_key]
+            
+            # 1. Establish master properties for THIS SPOT on its specific origin frame
+            master_spot = spots.Spots(frame=origin_frame)
+            master_spot.set_positions(np.array([coord]))
+            
+            active_img = target_image_object[origin_frame]
+            active_img_array = active_img.as_image()[:, :]
+            
+            # Calculate structure and noise metrics ONLY on the frame where it was clicked
+            master_spot.refine_centres(active_img, self.params)
+            master_spot.get_spot_widths(active_img_array, self.params)
+            master_spot.get_precision(active_img_array, self.params)
+            
+            spot_frames = []
+            
+            # 2. Extract intensities across all frames for this single spot
+            for f in range(target_image_object.num_frames):
+                s = spots.Spots(frame=f)
+                
+                # Lock positions to the refined master coordinates
+                s.set_positions(np.copy(master_spot.positions))
+                
+                # Propagate the structural and noise metrics calculated from the origin frame
+                # s.bg_intensity = np.copy(master_spot.bg_intensity)
+                s.snr = np.copy(master_spot.snr)
+                s.noise = np.copy(master_spot.noise)
+                s.width = np.copy(master_spot.width) # s.get_spot_widths(target_image_object[origin_frame].as_image(), self.params)
+                s.precision = np.copy(master_spot.precision)
+                
+                # ONLY calculate the intensity for the current frame
+                img_array = target_image_object[f].as_image()[:, :]
+                s.get_spot_intensities(img_array, self.params)
+                
+                spot_frames.append(s)
+                
+            # Build the trajectory for this individual spot and apply its Global ID
+            traj_list = trajectories.build_trajectories(spot_frames, self.params)
+            if traj_list:
+                traj = traj_list[0]
+                traj.id = event["id"]
+                all_trajs.append(traj)   
+        return all_trajs
+    
+    def refresh_plot(self):
+        if not self.img_ch1 or not MODULES_LOADED: return
+        
+        self.ax3.clear()
+        self.ax3.set_prop_cycle(None)
+        
+        self.params.num_frames = self.img_ch1.num_frames
+        self.params.chung_kennedy = self.ck_yes.isChecked()
+        self.params.Isingle = int(self.isingle_box.text())
+        do_stoic = self.stoic_yes.isChecked()
+
+        def render_trajs(trajs, ch_label):
+            for traj in trajs:
+                t = np.array(traj.intensity)
+                base_label = f"ID:{traj.id} ({ch_label})" 
+                label = f"{base_label} Stoic: {np.mean(t[:3])/self.params.Isingle:.1f}" if do_stoic else base_label
+                
+                if self.params.chung_kennedy:
+                    ck_data = postprocessing.chung_kennedy_filter(t, self.params.chung_kennedy_window, 1)[0][:-1]
+                    self.ax3.plot(ck_data[:self.params.num_frames-1] / 10**3, label=label)
+                else:
+                    self.ax3.plot(t[:self.params.num_frames] / 10**3, label=label)
+
+        render_trajs(self.trajs_ch1, "Ch1")
+        if self.rb_dual.isChecked():
+            render_trajs(self.trajs_ch2, "Ch2")
+            
+        self.ax3.set_title("Chung-Kennedy Filtered" if self.params.chung_kennedy else "Raw Intensity Data")
+        self.ax3.set_xlabel("Frame number")
+        self.ax3.set_ylabel(r"Intensity (x10$^3$)")
+        if do_stoic or self.rb_dual.isChecked():
+            self.ax3.legend(fontsize=8, loc='upper right')
+            
+        self.update_frame()
+
+    def clear_plot(self):
+        self.global_track_id = 0
+        self.click_events = []
+        self.coords_ch1, self.coords_ch2, self.coords = [], [], []
+        self.trajs_ch1, self.trajs_ch2, self.trajs = [], [], []
+        self.ax1.clear()
+        self.ax2.clear()
+        self.ax3.clear()
+        self.update_frame()
+
+    def save_data(self):
+        if not self.params.name or not MODULES_LOADED: return
+        base_dir = self.params.name.rsplit('/', 1)[0]
+        base_name = f"{base_dir}/{self.outname_box.text()}"
+        
+        do_ch1 = self.save_ch1.isChecked() or self.save_both.isChecked()
+        do_ch2 = self.save_ch2.isChecked() or self.save_both.isChecked()
+        
+        if do_ch1 and self.trajs_ch1:
+            trajectories.write_trajectories(self.trajs_ch1, f"{base_name}_ch1.tsv")
+        if do_ch2 and self.rb_dual.isChecked() and self.trajs_ch2:
+            trajectories.write_trajectories(self.trajs_ch2, f"{base_name}_ch2.tsv")
+            
+        # Export Plotting Graph Figure
+        tmpfig, tmpax = plt.subplots()
+        do_stoic = self.stoic_yes.isChecked()
+        
+        def plot_to_ax(trajs, ch_label):
+            for traj in trajs:
+                t = np.array(traj.intensity)
+                base_label = f"ID:{traj.id} ({ch_label})"
+                label = f'{base_label} Stoic: {np.mean(t[:3])/self.params.Isingle:.1f}' if do_stoic else base_label
+                if self.params.chung_kennedy:
+                    tmpax.plot(postprocessing.chung_kennedy_filter(t, self.params.chung_kennedy_window, 1)[0][:-1] / 10**3, label=label)
+                else:
+                    tmpax.plot(t / 10**3, label=label)
+                    
+        if do_ch1: plot_to_ax(self.trajs_ch1, "Ch1")
+        if do_ch2 and self.rb_dual.isChecked(): plot_to_ax(self.trajs_ch2, "Ch2")
+        
+        if do_stoic or self.rb_dual.isChecked(): 
+            tmpax.legend(fontsize=8, loc='upper right')
+            
+        tmpax.set_title("Chung-Kennedy Filtered" if self.params.chung_kennedy else "Raw Intensity Data")
+        tmpax.set_xlabel("Frame number")
+        tmpax.set_ylabel(r"Intensity (x10$^3$)")
+        tmpfig.savefig(f"{base_name}_plot.png", dpi=300)
+        plt.close(tmpfig)
+        
+        show_popup(self, "Export Success", f"Successfully saved trajectories and plot for selected channels to:\n{base_dir}")

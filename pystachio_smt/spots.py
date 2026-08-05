@@ -255,6 +255,7 @@ class Spots:
             if intensity == 0:
                 print(f"WARNING: Zero intensity found at {[x, y]}")
             self.spot_intensity[i] = intensity
+            self.bg_intensity[i] = bgintensity
 
     def refine_centres(self, frame, params):
         image = frame.as_image()
