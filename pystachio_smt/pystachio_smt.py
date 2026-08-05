@@ -2,8 +2,6 @@
 # -*- coding: utf-8 -*-
 # vim:fenc=utf-8
 #
-# Copyright © 2020 Edward Higgins <ed.higgins@york.ac.uk>
-#
 # Distributed under terms of the MIT license.
 
 """ SMT - Single Molecule Tools program
@@ -15,9 +13,11 @@ Contains:
     function main
 
 Author:
+    Jack Shepherd
+    Lewis Frame
     Edward Higgins
 
-Version: 0.2.0
+Version: 0.9.0
 """
 
 import sys
@@ -29,8 +29,6 @@ import postprocessing
 import simulation
 import tracking
 import trajectories
-import visualisation
-import dash_ui.launcher
 import preprocess
 import os
 import datetime
@@ -150,10 +148,8 @@ def main():
     sim=False
     
     for task in params.task:
-        if task == "app":
-            dash_ui.launcher.launch_app(params)
 
-        elif task == "help":
+        if task == "help":
             # Safely check if a specific help topic was requested
             if len(args) > 0:
                 params.help(args[0])
