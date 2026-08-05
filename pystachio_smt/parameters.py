@@ -42,7 +42,7 @@ default_parameters = {
           'level': 'basic',
           'class': 'general',
           'default': [],
-          'options': ['simulate', 'track', 'postprocess', 'view', 'app'] },
+          'options': ['preprocess', 'simulate', 'track', 'postprocess', 'view', 'app'] },
     'name':
         { 'description': 'Name prefixing all files associated with this run',
           'level': 'basic',
@@ -322,12 +322,115 @@ default_parameters = {
         'class' : 'postprocessing',
         'default' : '10000',
         },
-    'isingle_fraction':{
-        'level' : 'advanced',
-        'class' : 'postprocessing',
-        'description' : 'What % of frames to use when estimating Isingle. The specified percentage will be at the end of the acquisition, i.e. when things should have photobleached already',
-        'default' : 66
-        }
+
+    # Preprocessing parameters
+    'video_path':
+        { 'description': 'Path to the raw video TIFF',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': '' },
+    'channel':
+        { 'description': 'Default channel to use for alignment registration (e.g., L or R)',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': 'L' },
+    'num_channels':
+        { 'description': 'Number of channels in the raw video',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': 1 },
+    'bf_path':
+        { 'description': 'Path to the brightfield image',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': '' },
+    'bead_path':
+        { 'description': 'Path to the calibration bead TIFF',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': '' },
+    'manual_registration':
+        { 'description': 'Set True to manually click beads for alignment',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': False },
+    'manual_pairs':
+        { 'description': 'Number of bead pairs to click if manual_registration is True',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': 10 },
+    'tmats_path':
+        { 'description': 'Path to save/load transformation matrix',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': './transformation_matrix.npy' },
+    'model':
+        { 'description': 'Path to the segmentation model file (.h5)',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': 'model.h5' },
+    'model_type':
+        { 'description': 'Type of model (e.g., unet)',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': 'unet' },
+    'mask_type':
+        { 'description': 'Method for mask generation (AI, BF, FL_AI, THRESHOLD, WHOLE, MANUAL, or file)',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': 'WHOLE',
+          'options': ['AI', 'BF', 'FL_AI', 'THRESHOLD', 'WHOLE', 'MANUAL', 'file'] },
+    'frame_avg':
+        { 'description': 'Number of frames to average for ROI/Mask generation',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': 5 },
+    'roi_channel':
+        { 'description': 'Channel to use for ROI generation (L or R)',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': 'L' },
+    'roi_file':
+        { 'description': 'Path to the ImageJ ROI zip file',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': 'roi.zip' },
+    'area_filter':
+        { 'description': 'Minimum area size for cell filtering',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': 0 },
+    'inv_bf':
+        { 'description': 'Invert brightfield image intensity',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': False },
+    'cell_fitting':
+        { 'description': 'Perform precise cell boundary fitting',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': False },
+    'mask_prefix':
+        { 'description': 'Prefix for saved mask files',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': '' },
+    'use_otsu':
+        { 'description': 'Use Otsu thresholding instead of model segmentation (True, False, or multi)',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': 'False', 
+          'options': ['False', 'True', 'multi'] },
+    'overwrite':
+        { 'description': 'Overwrite existing output files',
+          'level': 'advanced',
+          'class': 'preprocessing',
+          'default': True },
+    'save_dir':
+        { 'description': 'Directory to save output results',
+          'level': 'basic',
+          'class': 'preprocessing',
+          'default': '' }
 }
 
 
@@ -338,77 +441,6 @@ class Parameters:
         for param in self._params.keys():
             # Set all the values to be the default values
             self._params[param]['value'] = self._params[param]['default']
-
-#EJH#         self.num_procs = 0
-#EJH#         self.verbose = True  # Whether or not to display verbose console output
-#EJH#         self.c_split = "None"  # How the channels are split
-#EJH#         self.frames_to_track = (
-#EJH#             0  # How many frames to track after the laser has switched on
-#EJH#         )
-#EJH#         self.start_channel = 0  # First channel to use
-#EJH#         self.end_channel = 0  # Last channel to use
-#EJH#         self.use_cursor = False  # Whether or not to use the cursor
-#EJH#         self.determine_first_frames = (
-#EJH#             False  # Are there blank frames before the shutter opens?
-#EJH#         )
-#EJH#         self.frame_avg_window = 1  # Number of frames to average over
-#EJH#         self.sat_pixel_val = 10 ** 10  # Value representing saturated pixels
-#EJH# 
-#EJH#         self.task = ""
-#EJH#         self.verbose = True
-#EJH#         self.render_image = False
-#EJH#         self.use_mask = False
-#EJH#         self.seed_name = ""
-#EJH# 
-#EJH#         # Spots.find_in_frame
-#EJH#         self.filter_image = "gaussian"
-#EJH#         self.disk_radius = 5
-#EJH#         self.bw_threshold_tolerance = 1.0
-#EJH#         self.snr_filter_cutoff = 0.4
-#EJH# 
-#EJH#         self.max_displacement = 5.0
-#EJH#         # Initialise
-#EJH#         self.num_spots = 10
-#EJH#         self.Isingle = 10000.0
-#EJH#         self.BGmean = 500.0  # mean background pixel intensity
-#EJH#         self.BGstd = 120.0  # standard deviation of background pixels
-#EJH#         self.num_frames = 100
-#EJH#         self.split_frame = False
-#EJH#         self.frame_size = [64, 64]
-#EJH# 
-#EJH#         self.min_traj_len = 3
-#EJH#         self.bleach_time = 0 # in frames, if 0 then no bleaching
-#EJH#         self.diffusionCoeff = 1.0 # um2/s
-#EJH# 
-#EJH#         self.max_spot_molecules = 10
-#EJH#         self.num_spot_molecules = None
-#EJH#         self.nDiffPoints = 4  # number of MSD points to calculate diffusion const
-#EJH#         self.frameTime = 0.005  # seconds
-#EJH#         self.pixelSize = 0.120  # microns
-#EJH#         self.PSFwidth = (
-#EJH#             0.160 / self.pixelSize
-#EJH#         )  # Sigma of a Gaussian, ~2/3 airy disk diameter
-#EJH#         self.MSD_num_points = 4
-#EJH# 
-#EJH#         self.p_bleach_per_frame = 0.05
-#EJH# 
-#EJH#         self.subarray_halfwidth = 8
-#EJH#         self.inner_mask_radius = 5
-#EJH#         self.gauss_mask_sigma = 2.
-#EJH#         self.gauss_mask_max_iter = 1000
-#EJH# 
-#EJH#         self.stoic_method = "linear_fit"
-#EJH#         self.num_stoic_frames = 4
-#EJH#         self.colocalize_n_frames = 5
-#EJH#         
-#EJH#         self.ALEX=False
-#EJH#         self.start_channel='L'
-#EJH#         self.colocalise=False
-#EJH#         self.colocalise_distance = 5
-#EJH#         self.overlap_thresh = 0.75
-#EJH#         
-#EJH#         self.calculate_isingle=True
-#EJH#         self.copy_number=False
 
     def __getattr__(self, name):
         if name.startswith("_"):
@@ -426,11 +458,14 @@ class Parameters:
                 print(f"\nNo such key {name}. Did you mean {max_param}?\n")
                 raise  exc
 
-    def __setattribute__(self, name, value):
+    def __setattr__(self, name, value):
         if name.startswith("_"):
             object.__setattr__(self, name, value)
         else:
-            self._params[name]['value'] = value
+            if name in self._params:
+                self._params[name]['value'] = value
+            else:
+                object.__setattr__(self, name, value)
 
     def help(self, name=None, param_class=None, level='basic'):
         names = []
@@ -464,34 +499,35 @@ class Parameters:
 
 
     def read(self, args):
+        if not args:
+            return
+
         self.task = args.pop(0)
         self.task = self.task.split(",")
         if self.task == ['help']:
             return
-        elif self.task != ['app']:
+        elif self.task != ['app'] and args:
             self.name = args.pop(0)
 
         for arg in args:
-            key, value = arg.split("=", 2)
+            if "=" not in arg:
+                continue
+            key, value = arg.split("=", 1)
             try:
-                # use isinstance
-                if type(getattr(self, key)) is type(0):
-                    setattr(self, key, int(value))
-
-                elif type(getattr(self, key)) is type(0.0):
-                    setattr(self, key, float(value))
-
-                elif type(getattr(self, key)) is type(True):
+                current_val = getattr(self, key)
+                # Check for bool first since bool is an instance/subclass of int in Python
+                if isinstance(current_val, bool):
                     setattr(self, key, value == "True")
-
-                elif type(getattr(self, key)) is type([]):
+                elif isinstance(current_val, int):
+                    setattr(self, key, int(value))
+                elif isinstance(current_val, float):
+                    setattr(self, key, float(value))
+                elif isinstance(current_val, list):
                     setattr(self, key, list(map(lambda x: int(x), value.split(","))))
-
                 else:
                     setattr(self, key, value)
-
-            except NameError:
-                sys.exit(f"ERROR: No such parameter '{key}'")
+            except (AttributeError, ValueError, KeyError):
+                print(f"Warning: Unknown or invalid parameter '{key}'")
 
             if key == "pixel_size":
                 self.psf_width = 0.160 / self.pixel_size
@@ -499,7 +535,6 @@ class Parameters:
     def param_dict(self, param_class=''):
         param_dict = {}
 
-        
         if param_class:
             for k,v in self._params.items():
                 if v["class"] == param_class:
@@ -508,5 +543,4 @@ class Parameters:
             param_dict = self._params
 
         return param_dict
-
 
