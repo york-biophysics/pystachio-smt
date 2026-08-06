@@ -688,7 +688,7 @@ class MaskEditor:
     - Click points + 'r': Reject/delete selected cell masks
     - 'z': Undo last change | 'x': Clear current path points | 'd': Done/Save
     """
-    def __init__(self, mask, bf_img=None, fl_img=None, sausage_width=14, alpha=0.4, outline_alpha=0.7):
+    def __init__(self, mask, bf_img=None, fl_img=None, rect_width=14, alpha=0.4, outline_alpha=0.7):
         conflicting_keys = ['f', 'c', 'r', 'z', 'a', 'p', 'x', 'd', '+', '-', '=']
         for param in plt.rcParams:
             if param.startswith('keymap.'):
@@ -711,7 +711,7 @@ class MaskEditor:
 
         self.history = []
         self.current_points = []
-        self.sausage_width = sausage_width
+        self.rect_width = rect_width
         self.alpha = alpha
         self.outline_alpha = outline_alpha
 
@@ -778,7 +778,7 @@ class MaskEditor:
     def _set_title(self):
         self.fig.suptitle(
             f"Left-Drag: Freehand Lasso | Right-Drag: Delete Box | C: Cut | A: Sausage/Add | P: Polygon | F: Fit Capsule | "
-            f"Width: {self.sausage_width}px (+/-) | R: Reject | Z: Undo | D: Done", 
+            f"Width: {self.rect_width}px (+/-) | R: Reject | Z: Undo | D: Done", 
             fontsize=9
         )
         self.fig.canvas.draw_idle()
@@ -890,10 +890,10 @@ class MaskEditor:
             self.current_points = []
             self._refresh_line()
         elif event.key in ["-", "_"]:
-            self.sausage_width = max(2, self.sausage_width - 2)
+            self.rect_width = max(2, self.rect_width - 2)
             self._set_title()
         elif event.key in ["+", "="]:
-            self.sausage_width += 2
+            self.rect_width += 2
             self._set_title()
         elif event.key == "d":
             plt.close(self.fig)
@@ -950,8 +950,8 @@ class MaskEditor:
             p1, p2 = self.current_points
             canvas = np.zeros(self.mask.shape, dtype=np.uint8)
             x1, y1, x2, y2 = int(round(p1[0])), int(round(p1[1])), int(round(p2[0])), int(round(p2[1]))
-            rad = max(1, int(round(self.sausage_width / 2)))
-            cv2.line(canvas, (x1, y1), (x2, y2), color=1, thickness=self.sausage_width)
+            rad = max(1, int(round(self.rect_width / 2)))
+            cv2.line(canvas, (x1, y1), (x2, y2), color=1, thickness=self.rect_width)
             cv2.circle(canvas, (x1, y1), rad, color=1, thickness=-1)
             cv2.circle(canvas, (x2, y2), rad, color=1, thickness=-1)
             new_shape = canvas.astype(bool)
@@ -1076,7 +1076,7 @@ class AnalysisPipeline:
         # --- 1. Map Universal PySTACHIO Params to Internal Names ---
         self.pxsize = params.pixel_size        # mapped from pixel_size
         self.ALEX = params.ALEX                # mapped from ALEX
-        self.save_dir = params.name            # Use the seed 'name' as the directory
+        self.save_dir = params.save_dir if params.save_dir else params.name            # Use the seed 'name' as the directory
         self.channel = params.use_channel      # mapped from use_channel
         self.num_frames = None if params.num_frames == 0 else params.num_frames
 
