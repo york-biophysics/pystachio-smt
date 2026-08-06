@@ -1733,6 +1733,15 @@ class AnalysisPipeline:
         all_fit_results = []
         fit_outlines = {}
         
+        global_bg_mask = (mask == 0)
+        global_median_bgs = {}
+        
+        for c_name, c_data in [("L", L_chan), ("R", R_chan)]:
+            if c_data is not None:
+                c_avg = np.mean(c_data[:int(self.args.frame_avg)], axis=0)
+                bg_pixels = c_avg[global_bg_mask]
+                global_median_bgs[c_name] = float(np.median(bg_pixels)) if len(bg_pixels) > 0 else 0.0
+        
         for obj_num, obj in enumerate(objects, start=1):
             if obj.area < int(self.args.area_filter): continue
             
@@ -1763,11 +1772,10 @@ class AnalysisPipeline:
                     # 2. Create the ROI-sized 2D average image
                     chan_avg = np.mean(chan_data[:int(self.args.frame_avg)], axis=0)
                     
-                    # --- CALCULATE MASK INTENSITIES FOR SUMMARY ---
                     mask_pixels = chan_avg[cell_mask > 0]
                     obj_data[f'mean_intensity_{chan_name}'] = float(np.mean(mask_pixels)) if len(mask_pixels) > 0 else 0.0
                     obj_data[f'total_intensity_{chan_name}'] = float(np.sum(mask_pixels)) if len(mask_pixels) > 0 else 0.0
-                    # -----------------------------------------------
+                    obj_data[f'global_median_bg_{chan_name}'] = global_median_bgs[chan_name]
 
                     chan_avg_uint = chan_avg.astype(np.uint16)
                     
