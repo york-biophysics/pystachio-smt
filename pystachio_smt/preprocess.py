@@ -1420,7 +1420,7 @@ class AnalysisPipeline:
             'intercept': intercept
         }    
 
-    def line_profile(self, fitted_mask_file, raw_image_L_file, raw_image_R_file=None, save_dir=".", is_ALEX=False, alex_start_frame=0, channel_label="L"):
+    def line_profile(self, fitted_mask_file, save_dir=".", is_ALEX=False, alex_start_frame=0):
         import tifffile
         import numpy as np
         import pandas as pd
@@ -1428,17 +1428,14 @@ class AnalysisPipeline:
         import os
 
         fitted_mask = tifffile.imread(fitted_mask_file)
-        raw_image_L = tifffile.imread(raw_image_L_file)
-        
-        has_R = raw_image_R_file is not None and os.path.exists(raw_image_R_file)
-        raw_image_R = tifffile.imread(raw_image_R_file) if has_R else None
+        num_channels = int(self.args.num_channels)
 
-        # 1. Extract skeleton, polynomial fit, and parallel line coordinates via helper
+        # 1. Extract skeleton, centerline fit, and parallel line offset coordinates
         skel = self.extract_skeleton_centerlines(fitted_mask, num_lines=5, spacing=1)
         all_rr_valid, all_cc_valid = skel['all_rr_valid'], skel['all_cc_valid']
         start_idx, end_idx = skel['start_idx'], skel['end_idx']
-        
-        # 2. Plot Skeleton Verification
+
+        # Save Skeleton Verification Plot
         height, width = fitted_mask.shape
         fig, axes = plt.subplots(1, 2, figsize=(10, 4))
         axes[0].imshow(fitted_mask, cmap="gray")
@@ -1457,134 +1454,138 @@ class AnalysisPipeline:
         plt.savefig(os.path.join(save_dir, "skeleton_verification.png"))
         plt.close()
 
-        # 3. Extract channel frame averages
-        def get_channel_avg(raw_image):
-            if raw_image is None: return None
-            if raw_image.ndim == 3:
-                frames = raw_image[alex_start_frame::2] if is_ALEX else raw_image
+        def get_channel_avg(raw_path):
+            if not os.path.exists(raw_path):
+                return None
+            raw = tifffile.imread(raw_path)
+            if raw.ndim == 3:
+                frames = raw[alex_start_frame::2] if is_ALEX else raw
                 return np.mean(frames, axis=0)
-            return raw_image
+            return raw
 
-        left_channel_raw = get_channel_avg(raw_image_L)
-        right_channel_raw = get_channel_avg(raw_image_R) if has_R else None
-        
-        # Extract and crop parallel profile intensities
-        intensities_L = np.array([left_channel_raw[r, c] for r, c in zip(all_rr_valid, all_cc_valid)])
-        cropped_all_L = intensities_L[:, start_idx:end_idx]
-        
-        cropped_all_R = None
-        if has_R:
-            intensities_R = np.array([right_channel_raw[r, c] for r, c in zip(all_rr_valid, all_cc_valid)])
-            cropped_all_R = intensities_R[:, start_idx:end_idx]
-
-        # 4. Calculate half-cell statistics
-        mid_point = cropped_all_L.shape[1] // 2
-        first_halves_L = cropped_all_L[:, :mid_point]
-        second_halves_flipped_L = cropped_all_L[:, mid_point:mid_point*2][:, ::-1]
-        
-        mean_left_L = np.mean(first_halves_L, axis=0)
-        sem_left_L = np.std(first_halves_L, axis=0, ddof=1) / np.sqrt(5)
-        mean_right_L = np.mean(second_halves_flipped_L, axis=0)
-        sem_right_L = np.std(second_halves_flipped_L, axis=0, ddof=1) / np.sqrt(5)
-        
-        x_pixels_half = np.arange(mid_point)
-        other_label = "R" if channel_label == "L" else "L"
-
-        # --- Plot 1: Left vs Right Halves ---
-        if has_R:
-            first_halves_R = cropped_all_R[:, :mid_point]
-            second_halves_flipped_R = cropped_all_R[:, mid_point:mid_point*2][:, ::-1]
+        def compute_stats(raw_img):
+            intensities = np.array([raw_img[r, c] for r, c in zip(all_rr_valid, all_cc_valid)])
+            cropped = intensities[:, start_idx:end_idx]
             
-            mean_left_R = np.mean(first_halves_R, axis=0)
-            sem_left_R = np.std(first_halves_R, axis=0, ddof=1) / np.sqrt(5)
-            mean_right_R = np.mean(second_halves_flipped_R, axis=0)
-            sem_right_R = np.std(second_halves_flipped_R, axis=0, ddof=1) / np.sqrt(5)
+            full_len = cropped.shape[1]
+            x_full = np.arange(full_len)
+            mean_full = np.mean(cropped, axis=0)
+            sem_full = np.std(cropped, axis=0, ddof=1) / np.sqrt(5)
+            
+            mid = full_len // 2
+            left_half = cropped[:, :mid]
+            second_half_flipped = cropped[:, mid:mid*2][:, ::-1]
+            
+            x_half = np.arange(mid)
+            mean_left = np.mean(left_half, axis=0)
+            sem_left = np.std(left_half, axis=0, ddof=1) / np.sqrt(5)
+            mean_right = np.mean(second_half_flipped, axis=0)
+            sem_right = np.std(second_half_flipped, axis=0, ddof=1) / np.sqrt(5)
+            
+            return {
+                'cropped': cropped,
+                'x_full': x_full,
+                'mean_full': mean_full,
+                'sem_full': sem_full,
+                'x_half': x_half,
+                'mean_left': mean_left,
+                'sem_left': sem_left,
+                'mean_right': mean_right,
+                'sem_right': sem_right
+            }
 
-            fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-            axes[0].plot(x_pixels_half, mean_left_L, label="Left Half", color="blue")
-            axes[0].fill_between(x_pixels_half, mean_left_L - sem_left_L, mean_left_L + sem_left_L, color="blue", alpha=0.2)
-            axes[0].plot(x_pixels_half, mean_right_L, label="Right Half (Flipped)", color="green")
-            axes[0].fill_between(x_pixels_half, mean_right_L - sem_right_L, mean_right_L + sem_right_L, color="green", alpha=0.2)
-            axes[0].set_title(f"Channel {channel_label}: Left Half vs Right Half")
-            axes[0].set_xlabel("Pixel Distance from Edge/Center")
-            axes[0].set_ylabel("Fluorescence Intensity")
-            axes[0].legend()
-
-            axes[1].plot(x_pixels_half, mean_left_R, label="Left Half", color="cyan")
-            axes[1].fill_between(x_pixels_half, mean_left_R - sem_left_R, mean_left_R + sem_left_R, color="cyan", alpha=0.2)
-            axes[1].plot(x_pixels_half, mean_right_R, label="Right Half (Flipped)", color="magenta")
-            axes[1].fill_between(x_pixels_half, mean_right_R - sem_right_R, mean_right_R + sem_right_R, color="magenta", alpha=0.2)
-            axes[1].set_title(f"Channel {other_label}: Left Half vs Right Half")
-            axes[1].set_xlabel("Pixel Distance from Edge/Center")
-            axes[1].set_ylabel("Fluorescence Intensity")
-            axes[1].legend()
-        else:
+        def save_single_channel_outputs(ch_label, stats, color_l="blue", color_r="green", color_full="cyan"):
+            # Plot 1: Halves (Left vs Right)
             plt.figure(figsize=(8, 5))
-            plt.plot(x_pixels_half, mean_left_L, label="Left Half", color="blue")
-            plt.fill_between(x_pixels_half, mean_left_L - sem_left_L, mean_left_L + sem_left_L, color="blue", alpha=0.2)
-            plt.plot(x_pixels_half, mean_right_L, label="Right Half (Flipped)", color="green")
-            plt.fill_between(x_pixels_half, mean_right_L - sem_right_L, mean_right_L + sem_right_L, color="green", alpha=0.2)
-            plt.title(f"Cell Profile: Left Half vs Right Half ({channel_label} Channel)")
+            plt.plot(stats['x_half'], stats['mean_left'], label="Left Half", color=color_l)
+            plt.fill_between(stats['x_half'], stats['mean_left'] - stats['sem_left'], stats['mean_left'] + stats['sem_left'], color=color_l, alpha=0.2)
+            plt.plot(stats['x_half'], stats['mean_right'], label="Right Half (Flipped)", color=color_r)
+            plt.fill_between(stats['x_half'], stats['mean_right'] - stats['sem_right'], stats['mean_right'] + stats['sem_right'], color=color_r, alpha=0.2)
+            plt.title(f"Channel {ch_label}: Left Half vs Right Half Profile")
             plt.xlabel("Pixel Distance from Edge/Center")
             plt.ylabel("Fluorescence Intensity")
             plt.legend()
+            plt.tight_layout()
+            plt.savefig(os.path.join(save_dir, f"left_vs_right_half_profile_{ch_label}.png"))
+            plt.close()
 
-        plt.tight_layout()
-        plt.savefig(os.path.join(save_dir, "left_vs_right_half_profile.png"))
-        plt.close()
+            # Plot 2: Full Length Profile
+            plt.figure(figsize=(10, 5))
+            plt.plot(stats['x_full'], stats['mean_full'], label=f"Channel {ch_label}", color=color_full)
+            plt.fill_between(stats['x_full'], stats['mean_full'] - stats['sem_full'], stats['mean_full'] + stats['sem_full'], color=color_full, alpha=0.2)
+            plt.title(f"Channel {ch_label}: Full Length Line Profile")
+            plt.xlabel("Pixel Distance along Centerline")
+            plt.ylabel("Fluorescence Intensity")
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig(os.path.join(save_dir, f"full_length_line_profile_{ch_label}.png"))
+            plt.close()
 
-        # --- Plot 2: Full Length Comparison ---
-        full_length = cropped_all_L.shape[1]
-        x_pixels_full = np.arange(full_length)
-        
-        mean_full_L = np.mean(cropped_all_L, axis=0)
-        sem_full_L = np.std(cropped_all_L, axis=0, ddof=1) / np.sqrt(5)
-
-        plt.figure(figsize=(10, 5))
-        plt.plot(x_pixels_full, mean_full_L, label=f"Channel {channel_label}", color="cyan")
-        plt.fill_between(x_pixels_full, mean_full_L - sem_full_L, mean_full_L + sem_full_L, color="cyan", alpha=0.2)
-        
-        if has_R:
-            mean_full_R = np.mean(cropped_all_R, axis=0)
-            sem_full_R = np.std(cropped_all_R, axis=0, ddof=1) / np.sqrt(5)
-            plt.plot(x_pixels_full, mean_full_R, label=f"Channel {other_label}", color="magenta")
-            plt.fill_between(x_pixels_full, mean_full_R - sem_full_R, mean_full_R + sem_full_R, color="magenta", alpha=0.2)
-            plt.title(f"Full Cell Profile: Channel {channel_label} vs Channel {other_label}")
-        else:
-            plt.title(f"Full Cell Profile: Channel {channel_label}")
-            
-        plt.xlabel("Pixel Distance along Centerline")
-        plt.ylabel("Fluorescence Intensity")
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(os.path.join(save_dir, "full_length_line_profile.png"))
-        plt.close()
-
-        # 5. Export Combined Full-Length CSV
-        full_df_dict = {
-            "Pixel_Index": x_pixels_full,
-            f"Channel_{channel_label}_Line_-2": cropped_all_L[0],
-            f"Channel_{channel_label}_Line_-1": cropped_all_L[1],
-            f"Channel_{channel_label}_Line_0": cropped_all_L[2],
-            f"Channel_{channel_label}_Line_+1": cropped_all_L[3],
-            f"Channel_{channel_label}_Line_+2": cropped_all_L[4],
-            f"Channel_{channel_label}_Mean": mean_full_L,
-            f"Channel_{channel_label}_SEM": sem_full_L
-        }
-        
-        if has_R:
-            full_df_dict.update({
-                f"Channel_{other_label}_Line_-2": cropped_all_R[0],
-                f"Channel_{other_label}_Line_-1": cropped_all_R[1],
-                f"Channel_{other_label}_Line_0": cropped_all_R[2],
-                f"Channel_{other_label}_Line_+1": cropped_all_R[3],
-                f"Channel_{other_label}_Line_+2": cropped_all_R[4],
-                f"Channel_{other_label}_Mean": mean_full_R,
-                f"Channel_{other_label}_SEM": sem_full_R
+            # Export Individual Channel CSV
+            df = pd.DataFrame({
+                "Pixel_Index": stats['x_full'],
+                f"Channel_{ch_label}_Line_-2": stats['cropped'][0],
+                f"Channel_{ch_label}_Line_-1": stats['cropped'][1],
+                f"Channel_{ch_label}_Line_0": stats['cropped'][2],
+                f"Channel_{ch_label}_Line_+1": stats['cropped'][3],
+                f"Channel_{ch_label}_Line_+2": stats['cropped'][4],
+                f"Channel_{ch_label}_Mean": stats['mean_full'],
+                f"Channel_{ch_label}_SEM": stats['sem_full']
             })
-            
-        profile_df_full = pd.DataFrame(full_df_dict)
-        profile_df_full.to_csv(os.path.join(save_dir, "full_length_line_profile.csv"), index=False)
+            df.to_csv(os.path.join(save_dir, f"line_profile_{ch_label}.csv"), index=False)
+
+        # 2. Determine target channels strictly by num_channels
+        channels_to_process = [self.args.channel] if num_channels == 1 else ["L", "R"]
+
+        stats_dict = {}
+        for ch in channels_to_process:
+            ch_file = os.path.join(self.args.save_dir, f"{ch}_channel.tif")
+            raw_avg = get_channel_avg(ch_file)
+            if raw_avg is not None:
+                stats = compute_stats(raw_avg)
+                stats_dict[ch] = stats
+                save_single_channel_outputs(ch, stats)
+            else:
+                print(f"Warning: Channel file {ch_file} not found for line profile.", flush=True)
+
+        # 3. Dual-Channel Combined Comparison (Only when num_channels == 2)
+        if num_channels == 2 and "L" in stats_dict and "R" in stats_dict:
+            stats_L = stats_dict["L"]
+            stats_R = stats_dict["R"]
+
+            # Combined Full Length Plot
+            plt.figure(figsize=(10, 5))
+            plt.plot(stats_L['x_full'], stats_L['mean_full'], label="Channel L", color="cyan")
+            plt.fill_between(stats_L['x_full'], stats_L['mean_full'] - stats_L['sem_full'], stats_L['mean_full'] + stats_L['sem_full'], color="cyan", alpha=0.2)
+            plt.plot(stats_R['x_full'], stats_R['mean_full'], label="Channel R", color="magenta")
+            plt.fill_between(stats_R['x_full'], stats_R['mean_full'] - stats_R['sem_full'], stats_R['mean_full'] + stats_R['sem_full'], color="magenta", alpha=0.2)
+            plt.title("Full Cell Profile: Channel L vs Channel R")
+            plt.xlabel("Pixel Distance along Centerline")
+            plt.ylabel("Fluorescence Intensity")
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig(os.path.join(save_dir, "full_length_line_profile_combined.png"))
+            plt.close()
+
+            # Combined CSV
+            df_combined = pd.DataFrame({
+                "Pixel_Index": stats_L['x_full'],
+                "Channel_L_Line_-2": stats_L['cropped'][0],
+                "Channel_L_Line_-1": stats_L['cropped'][1],
+                "Channel_L_Line_0": stats_L['cropped'][2],
+                "Channel_L_Line_+1": stats_L['cropped'][3],
+                "Channel_L_Line_+2": stats_L['cropped'][4],
+                "Channel_L_Mean": stats_L['mean_full'],
+                "Channel_L_SEM": stats_L['sem_full'],
+                "Channel_R_Line_-2": stats_R['cropped'][0],
+                "Channel_R_Line_-1": stats_R['cropped'][1],
+                "Channel_R_Line_0": stats_R['cropped'][2],
+                "Channel_R_Line_+1": stats_R['cropped'][3],
+                "Channel_R_Line_+2": stats_R['cropped'][4],
+                "Channel_R_Mean": stats_R['mean_full'],
+                "Channel_R_SEM": stats_R['sem_full'],
+            })
+            df_combined.to_csv(os.path.join(save_dir, "line_profile_combined.csv"), index=False)
     
     def create_interactive_html(self, images_dict, objects, fit_results_list, fit_outlines_dict, save_dir):
         """
@@ -2079,37 +2080,19 @@ class AnalysisPipeline:
                     mat_data['fit_length_nm'] = fit_result['Length_nm']
                     mat_data['fit_width_nm'] = fit_result['Width_nm']
                     
-                    # ==========================================================
                     # LINE PROFILE EXTRACTION
-                    # ==========================================================
-                    # 1. Save single cell mask to TIF for line_profile to read
                     single_mask_file = f"{cell_dir}/single_cell_mask.tif"
                     tifffile.imwrite(single_mask_file, (cell_mask * 255).astype(np.uint8))
 
-                    # 2. Identify active primary channel file and optional secondary channel file
-                    active_chan = self.args.channel
-                    raw_primary_file = f"{self.args.save_dir}/{active_chan}_channel.tif"
-                    
-                    other_chan = "R" if active_chan == "L" else "L"
-                    raw_secondary_file = f"{self.args.save_dir}/{other_chan}_channel.tif"
-
-                    # 3. Execute line_profile for whichever primary channel was processed
-                    if os.path.exists(raw_primary_file):
-                        try:
-                            self.line_profile(
-                                fitted_mask_file=single_mask_file,
-                                raw_image_L_file=raw_primary_file,
-                                raw_image_R_file=raw_secondary_file if os.path.exists(raw_secondary_file) else None,
-                                save_dir=cell_dir,
-                                is_ALEX=str(self.args.ALEX).lower() in ['true', '1', 't', 'y'],
-                                channel_label=active_chan
-                            )
-                        except Exception as e:
-                            print(f"Line fit failed for cell {obj_num}: {e}", flush=True)
-                    else:
-                        print(f"Line fit skipped for cell {obj_num}: Primary channel {raw_primary_file} missing.", flush=True)
-                    # ==========================================================
-
+                    try:
+                        self.line_profile(
+                            fitted_mask_file=single_mask_file,
+                            save_dir=cell_dir,
+                            is_ALEX=str(self.args.ALEX).lower() in ['true', '1', 't', 'y']
+                        )
+                    except Exception as e:
+                        print(f"Line fit failed for cell {obj_num}: {e}", flush=True)
+            
             if 'L' in extracted_intensities: mat_data['intensity_L'] = extracted_intensities['L']
             if 'R' in extracted_intensities: mat_data['intensity_R'] = extracted_intensities['R']
                 
