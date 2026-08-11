@@ -1361,6 +1361,199 @@ class AnalysisPipeline:
         }
         return fit_params, x_fitted, y_fitted
     
+    def line_fit(self, fitted_mask_file, raw_image_L_file, raw_image_R_file=None, save_dir=".", is_ALEX=False, alex_start_frame=0, channel_label="L"):
+        """
+        Skeletonisation of the cell mask and extracting fluorescence across extended lines. 
+        Halve, crop and stack repeats. Fits to Gaussian function and constrains baseline.
+        Plots:
+        1. Left vs Right halves of the cell on the same plot (for primary channel).
+        2. The entire length of the cell (single channel or dual channel comparison).
+        """
+        import tifffile
+        import numpy as np
+        import pandas as pd
+        import matplotlib.pyplot as plt
+        from skimage.morphology import skeletonize
+        from skimage.draw import line
+        import os
+
+        fitted_mask = tifffile.imread(fitted_mask_file)
+        raw_image_L = tifffile.imread(raw_image_L_file)
+        
+        has_R = raw_image_R_file is not None and os.path.exists(raw_image_R_file)
+        raw_image_R = tifffile.imread(raw_image_R_file) if has_R else None
+
+        # Load Cell Mask and Raw Image Stack ONCE
+        height, width = fitted_mask.shape
+        
+        # Extract skeleton and fit degree-1 polynomial centerline
+        skeleton_mask = skeletonize(fitted_mask)
+        out_arr_skeleton = np.argwhere(skeleton_mask)
+        
+        if len(out_arr_skeleton) == 0:
+            raise ValueError("Skeletonization failed: No mask pixels found.")
+            
+        y_coords = out_arr_skeleton[:, 0]
+        x_coords = out_arr_skeleton[:, 1]
+        
+        slope, intercept = np.polyfit(x_coords, y_coords, 1)
+        print(f"Skeleton Centerline: y = {slope:.4f}x + {intercept:.4f}")
+        
+        def get_channel_avg(raw_image):
+            if raw_image is None:
+                return None
+            if raw_image.ndim == 3:
+                if is_ALEX:
+                    # Slice every second frame, starting from alex_start_frame
+                    frames = raw_image[alex_start_frame::2]
+                else:
+                    # Average all frames if not ALEX
+                    frames = raw_image
+                return np.mean(frames, axis=0)
+            else:
+                return raw_image
+
+        left_channel_raw = get_channel_avg(raw_image_L)
+        right_channel_raw = get_channel_avg(raw_image_R) if has_R else None
+        
+        #### Parallel Line Scan Extraction ####
+        
+        # Base centerline coordinates across image width
+        x0, y0 = 0, int(round(slope * 0 + intercept))
+        x1, y1 = width - 1, int(round(slope * (width - 1) + intercept))
+        rr, cc = line(y0, x0, y1, x1)
+        
+        spacing = 1
+        offsets = [-2 * spacing, -1 * spacing, 0, 1 * spacing, 2 * spacing]
+        theta = np.arctan(slope)
+        dx = -np.sin(theta)
+        dy = np.cos(theta)
+        
+        all_rr, all_cc = [], []
+        for offset in offsets:
+            r = np.round(rr + offset * dy).astype(int)
+            c = np.round(cc + offset * dx).astype(int)
+            all_rr.append(r)
+            all_cc.append(c)
+        
+        all_rr = np.array(all_rr)
+        all_cc = np.array(all_cc)
+        
+        # Mask valid image boundaries across all 5 lines
+        valid_cols = ((all_rr >= 0) & (all_rr < height) & (all_cc >= 0) & (all_cc < width)).all(axis=0)
+        all_rr_valid = all_rr[:, valid_cols]
+        all_cc_valid = all_cc[:, valid_cols]
+        
+        # Centerline mask profile for bounding box definition
+        mask_line_values = fitted_mask[all_rr_valid[2], all_cc_valid[2]]
+        
+        #### Cropping, Halving and Processing Profiles #### 
+        
+        intensities_L = np.zeros(all_rr_valid.shape)
+        intensities_R = np.zeros(all_rr_valid.shape) if has_R else None
+        
+        for i in range(5):
+            intensities_L[i] = left_channel_raw[all_rr_valid[i], all_cc_valid[i]]
+            if has_R:
+                intensities_R[i] = right_channel_raw[all_rr_valid[i], all_cc_valid[i]]
+        
+        mask_indices = np.where(mask_line_values > 0)[0]
+        if len(mask_indices) == 0:
+            raise ValueError("No cell mask detected along centerline!")
+        
+        start_idx = max(0, mask_indices[0] - 5)
+        end_idx = min(len(mask_line_values), mask_indices[-1] + 5 + 1)
+        
+        # Shape: (5 parallel lines, cropped length)
+        cropped_all_L = intensities_L[:, start_idx:end_idx]
+        cropped_all_R = intensities_R[:, start_idx:end_idx] if has_R else None
+        
+        mid_point = cropped_all_L.shape[1] // 2
+        
+        # Halves for primary channel (for comparing left vs right side of the cell)
+        first_halves_L = cropped_all_L[:, :mid_point]                                # Left halves
+        second_halves_flipped_L = cropped_all_L[:, mid_point:mid_point*2][:, ::-1]   # Right halves flipped
+        
+        # Calculate stats for Plot 1 (Left vs Right Side of the Cell in Primary Channel)
+        mean_left_side = np.mean(first_halves_L, axis=0)
+        sem_left_side = np.std(first_halves_L, axis=0, ddof=1) / np.sqrt(5)
+        
+        mean_right_side = np.mean(second_halves_flipped_L, axis=0)
+        sem_right_side = np.std(second_halves_flipped_L, axis=0, ddof=1) / np.sqrt(5)
+        
+        x_pixels_half = np.arange(mid_point)
+        
+        # Calculate stats for Plot 2 (Entire Length)
+        full_length = cropped_all_L.shape[1]
+        x_pixels_full = np.arange(full_length)
+        
+        mean_full_L = np.mean(cropped_all_L, axis=0)
+        sem_full_L = np.std(cropped_all_L, axis=0, ddof=1) / np.sqrt(5)
+        
+        # --- Plot 1: Each "side" of the cell on the same plot ---
+        plt.figure(figsize=(8, 5))
+        plt.plot(x_pixels_half, mean_left_side, label="Left Half of Cell", color="blue")
+        plt.fill_between(x_pixels_half, mean_left_side - sem_left_side, mean_left_side + sem_left_side, color="blue", alpha=0.2)
+        
+        plt.plot(x_pixels_half, mean_right_side, label="Right Half of Cell (Flipped)", color="green")
+        plt.fill_between(x_pixels_half, mean_right_side - sem_right_side, mean_right_side + sem_right_side, color="green", alpha=0.2)
+        
+        plt.title(f"Cell Profile: Left Half vs Right Half ({channel_label} Channel)")
+        plt.xlabel("Pixel Distance from Edge/Center")
+        plt.ylabel("Fluorescence Intensity")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, "left_vs_right_half_profile.png"))
+        plt.close()
+
+        # --- Plot 2: Entire length of the cell ---
+        plt.figure(figsize=(10, 5))
+        plt.plot(x_pixels_full, mean_full_L, label=f"Channel {channel_label}", color="cyan")
+        plt.fill_between(x_pixels_full, mean_full_L - sem_full_L, mean_full_L + sem_full_L, color="cyan", alpha=0.2)
+        
+        if has_R:
+            mean_full_R = np.mean(cropped_all_R, axis=0)
+            sem_full_R = np.std(cropped_all_R, axis=0, ddof=1) / np.sqrt(5)
+            other_label = "R" if channel_label == "L" else "L"
+            plt.plot(x_pixels_full, mean_full_R, label=f"Channel {other_label}", color="magenta")
+            plt.fill_between(x_pixels_full, mean_full_R - sem_full_R, mean_full_R + sem_full_R, color="magenta", alpha=0.2)
+            plt.title(f"Full Cell Profile: Channel {channel_label} vs Channel {other_label}")
+        else:
+            plt.title(f"Full Cell Profile: Channel {channel_label}")
+            
+        plt.xlabel("Pixel Distance along Centerline")
+        plt.ylabel("Fluorescence Intensity")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, "full_length_line_profile.png"))
+        plt.close()
+
+        # Export Data to CSV (Only Full Length including all 5 lines, Mean, and SEM)
+        full_df_dict = {
+            "Pixel_Index": x_pixels_full,
+            f"Channel_{channel_label}_Line_-2": cropped_all_L[0],
+            f"Channel_{channel_label}_Line_-1": cropped_all_L[1],
+            f"Channel_{channel_label}_Line_0": cropped_all_L[2],
+            f"Channel_{channel_label}_Line_+1": cropped_all_L[3],
+            f"Channel_{channel_label}_Line_+2": cropped_all_L[4],
+            f"Channel_{channel_label}_Mean": mean_full_L,
+            f"Channel_{channel_label}_SEM": sem_full_L
+        }
+        
+        if has_R:
+            other_label = "R" if channel_label == "L" else "L"
+            full_df_dict.update({
+                f"Channel_{other_label}_Line_-2": cropped_all_R[0],
+                f"Channel_{other_label}_Line_-1": cropped_all_R[1],
+                f"Channel_{other_label}_Line_0": cropped_all_R[2],
+                f"Channel_{other_label}_Line_+1": cropped_all_R[3],
+                f"Channel_{other_label}_Line_+2": cropped_all_R[4],
+                f"Channel_{other_label}_Mean": mean_full_R,
+                f"Channel_{other_label}_SEM": sem_full_R
+            })
+            
+        profile_df_full = pd.DataFrame(full_df_dict)
+        profile_df_full.to_csv(os.path.join(save_dir, "full_length_line_profile.csv"), index=False)
     
     def create_interactive_html(self, images_dict, objects, fit_results_list, fit_outlines_dict, save_dir):
         """
@@ -1854,6 +2047,37 @@ class AnalysisPipeline:
                     fit_outlines[obj_num] = (x_fit, y_fit)
                     mat_data['fit_length_nm'] = fit_result['Length_nm']
                     mat_data['fit_width_nm'] = fit_result['Width_nm']
+                    
+                    # ==========================================================
+                    # LINE PROFILE EXTRACTION
+                    # ==========================================================
+                    # 1. Save single cell mask to TIF for line_fit to read
+                    single_mask_file = f"{cell_dir}/single_cell_mask.tif"
+                    tifffile.imwrite(single_mask_file, (cell_mask * 255).astype(np.uint8))
+
+                    # 2. Identify active primary channel file and optional secondary channel file
+                    active_chan = self.args.channel
+                    raw_primary_file = f"{self.args.save_dir}/{active_chan}_channel.tif"
+                    
+                    other_chan = "R" if active_chan == "L" else "L"
+                    raw_secondary_file = f"{self.args.save_dir}/{other_chan}_channel.tif"
+
+                    # 3. Execute line_fit for whichever primary channel was processed
+                    if os.path.exists(raw_primary_file):
+                        try:
+                            self.line_fit(
+                                fitted_mask_file=single_mask_file,
+                                raw_image_L_file=raw_primary_file,
+                                raw_image_R_file=raw_secondary_file if os.path.exists(raw_secondary_file) else None,
+                                save_dir=cell_dir,
+                                is_ALEX=str(self.args.ALEX).lower() in ['true', '1', 't', 'y'],
+                                channel_label=active_chan
+                            )
+                        except Exception as e:
+                            print(f"Line fit failed for cell {obj_num}: {e}", flush=True)
+                    else:
+                        print(f"Line fit skipped for cell {obj_num}: Primary channel {raw_primary_file} missing.", flush=True)
+                    # ==========================================================
 
             if 'L' in extracted_intensities: mat_data['intensity_L'] = extracted_intensities['L']
             if 'R' in extracted_intensities: mat_data['intensity_R'] = extracted_intensities['R']
