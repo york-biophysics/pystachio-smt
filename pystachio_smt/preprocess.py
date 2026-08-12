@@ -1435,25 +1435,6 @@ class AnalysisPipeline:
         all_rr_valid, all_cc_valid = skel['all_rr_valid'], skel['all_cc_valid']
         start_idx, end_idx = skel['start_idx'], skel['end_idx']
 
-        # Save Skeleton Verification Plot
-        height, width = fitted_mask.shape
-        fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-        axes[0].imshow(fitted_mask, cmap="gray")
-        axes[0].set_title("Original Mask")
-        axes[0].axis("off")
-        
-        axes[1].imshow(skel['skeleton_mask'], cmap="gray")
-        x_ext = np.array([0, width])
-        y_ext = skel['slope'] * x_ext + skel['intercept']
-        axes[1].plot(x_ext, y_ext, color="red", linewidth=1.5, label="Fitted Line")
-        axes[1].set_xlim(0, width)
-        axes[1].set_ylim(height, 0)
-        axes[1].set_title("Skeleton & Extended Line")
-        axes[1].legend(loc="upper right")
-        plt.tight_layout()
-        plt.savefig(os.path.join(save_dir, "skeleton_verification.png"))
-        plt.close()
-
         def get_channel_avg(raw_path):
             if not os.path.exists(raw_path):
                 return None
@@ -1494,7 +1475,7 @@ class AnalysisPipeline:
                 'sem_right': sem_right
             }
 
-        def save_single_channel_outputs(ch_label, stats, color_l="blue", color_r="green", color_full="cyan"):
+        def save_single_channel_outputs(ch_label, stats, color_l="blue", color_r="orange", color_full="green"):
             # Plot 1: Halves (Left vs Right)
             plt.figure(figsize=(8, 5))
             plt.plot(stats['x_half'], stats['mean_left'], label="Left Half", color=color_l)
@@ -1544,7 +1525,10 @@ class AnalysisPipeline:
             if raw_avg is not None:
                 stats = compute_stats(raw_avg)
                 stats_dict[ch] = stats
-                save_single_channel_outputs(ch, stats)
+                
+                # Assign Green for L and Red for R
+                ch_color = "green" if ch == "L" else "red"
+                save_single_channel_outputs(ch, stats, color_full=ch_color)
             else:
                 print(f"Warning: Channel file {ch_file} not found for line profile.", flush=True)
 
@@ -1553,12 +1537,12 @@ class AnalysisPipeline:
             stats_L = stats_dict["L"]
             stats_R = stats_dict["R"]
 
-            # Combined Full Length Plot
+            # Combined Full Length Plot (L=Green, R=Red)
             plt.figure(figsize=(10, 5))
-            plt.plot(stats_L['x_full'], stats_L['mean_full'], label="Channel L", color="cyan")
-            plt.fill_between(stats_L['x_full'], stats_L['mean_full'] - stats_L['sem_full'], stats_L['mean_full'] + stats_L['sem_full'], color="cyan", alpha=0.2)
-            plt.plot(stats_R['x_full'], stats_R['mean_full'], label="Channel R", color="magenta")
-            plt.fill_between(stats_R['x_full'], stats_R['mean_full'] - stats_R['sem_full'], stats_R['mean_full'] + stats_R['sem_full'], color="magenta", alpha=0.2)
+            plt.plot(stats_L['x_full'], stats_L['mean_full'], label="Channel L", color="green")
+            plt.fill_between(stats_L['x_full'], stats_L['mean_full'] - stats_L['sem_full'], stats_L['mean_full'] + stats_L['sem_full'], color="green", alpha=0.2)
+            plt.plot(stats_R['x_full'], stats_R['mean_full'], label="Channel R", color="red")
+            plt.fill_between(stats_R['x_full'], stats_R['mean_full'] - stats_R['sem_full'], stats_R['mean_full'] + stats_R['sem_full'], color="red", alpha=0.2)
             plt.title("Full Cell Profile: Channel L vs Channel R")
             plt.xlabel("Pixel Distance along Centerline")
             plt.ylabel("Fluorescence Intensity")
