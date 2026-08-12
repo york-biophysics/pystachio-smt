@@ -1208,7 +1208,8 @@ class AnalysisPipeline:
             self.save_image_with_scalebar(bf_norm, f"{self.args.save_dir}/BF.png", cmap="gray")
             
             # Save the full uncropped reg image just in case you need it later
-            full_bf_norm = img_as_uint(cv2.normalize(bf_overlay_full, None, 0, 1, cv2.NORM_MINMAX))
+            full_bf_norm = img_as_uint(np.clip(cv2.normalize(bf_overlay_full, None, 0, 1, cv2.NORM_MINMAX),0,1))
+            
             tifffile.imwrite(f"{self.args.save_dir}/BF_reg_full.tif", full_bf_norm, imagej=True)
 
         return bf_sum, bf_cropped
