@@ -34,6 +34,7 @@ import matplotlib.patches as patches
 from scipy import ndimage as ndi
 from matplotlib.widgets import RadioButtons
 from keras import backend as K
+from scipy.ndimage import gaussian_filter
 
 class FileHandler:
     """Utility class for managing files and directory structures."""
@@ -158,6 +159,27 @@ class IntensityAnalyzer:
         return fit_quality
 
 class ImageProcessor:
+    @staticmethod
+    def local_contrast_normalization(img, sigma=15.0, eps=1e-5):
+        """Standardizes image contrast across varying lighting."""
+        img_f = img.astype(np.float32)
+        local_mean = gaussian_filter(img_f, sigma=sigma)
+        img_zero_centered = img_f - local_mean
+        
+        local_var = gaussian_filter(img_zero_centered**2, sigma=sigma)
+        local_std = np.sqrt(np.maximum(local_var, 0)) + eps
+        
+        lcn_img = img_zero_centered / local_std
+        
+        lcn_min, lcn_max = lcn_img.min(), lcn_img.max()
+        if lcn_max > lcn_min:
+            lcn_norm = (lcn_img - lcn_min) / (lcn_max - lcn_min)
+        else:
+            lcn_norm = np.zeros_like(lcn_img)
+            
+        return (lcn_norm * 255).astype(np.uint8)
+
+    
     @staticmethod
     def read_roi(roi_path: str, roi_channel: str, current_channel: str, img_height: int, img_width: int, is_split_view: bool = True):
         # Calculate single channel width based on physical split, not user parameters
@@ -1109,7 +1131,11 @@ class AnalysisPipeline:
             elif params.model_type in ["unet", "keras"]:
                 print("Loading Keras/U-Net model...", flush=True)
                 # Ensure you still have the load_model import at the top of the file
-                self.model = load_model(params.model, compile=False, safe_mode=False)
+                try:
+                    self.model = load_model(params.model, compile=False, safe_mode=False)
+                except:
+                    import tf_keras as tfk
+                    self.model = tfk.models.load_model(params.model)
                 
             elif params.model_type == "pytorch":
                 print("Loading standard PyTorch model...", flush=True)
@@ -1838,10 +1864,11 @@ class AnalysisPipeline:
             elif self.args.model_type in ["unet", "keras"]:
                 patches, h, w = ImageProcessor.make_patches(img_for_masking, self.args.inv_bf)
                 
-                thresh = 0.75
+                thresh = 0.5
                 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
                 preds = []
                 for i, p in enumerate(patches):
+                    p = ImageProcessor.local_contrast_normalization(p)
                     # 1. DEBUG: Show the input patch before neural net
                     plt.figure(figsize=(6, 5))
                     plt.imshow(p, cmap='gray')
